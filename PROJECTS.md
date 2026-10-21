@@ -2353,3 +2353,21 @@ P62 validation: 1,122 tests passed, 4 skipped; generated manifests checked.
 Independent integration review passed. The archived 36-PR report replay and
 fresh Claude/Codex simulated-report delivery passed. These implementation checks
 precede PR delivery; installation synchronization and release remain separate actions.
+
+## [~] Project P63: muse-github-setup model choice with a contributor default (muse-github 0.1.1 → 0.2.0)
+
+**Purpose:** Keep `muse-spark-1.3-contributor` as the default Muse model while
+letting the owner explicitly choose another listed model. Today the model is
+hardcoded in six template locations, and a hand edit that misses one makes
+`muse_ci.py` refuse the policy.
+
+**Scope:** `install.py --model` with an allowlist (`muse-spark-1.3-contributor`
+default, `muse-spark-1.3`, `muse-wonder-1.0`) that writes every template location
+consistently; SKILL.md and user docs state the contributor default and the
+explicit-request rule. Wonder Full is excluded until its model ID is published.
+The repo-secrets detection change lives in the private smorin-skills repository.
+
+- [x] [P63-TS01] Tests: default is contributor; each listed model is written everywhere; unlisted models and model changes on an installed repository are refused
+- [x] [P63-T01] Add the installer `--model` allowlist
+- [x] [P63-T02] Document the model table and explicit-request rule; bump muse-github to 0.2.0
+- [ ] [P63-T03] Pass `just all`, open the PR, and merge
