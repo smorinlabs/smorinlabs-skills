@@ -146,6 +146,41 @@ def test_install_rejects_symlink_parent(tmp_path):
     assert list(other.iterdir()) == []
 
 
+def test_default_model_is_contributor():
+    assert installer.DEFAULT_MODEL == "muse-spark-1.3-contributor"
+    assert ci.MODEL == "model_api/" + installer.DEFAULT_MODEL
+    assert set(installer.MODELS) == {"muse-spark-1.3-contributor", "muse-spark-1.3", "muse-wonder-1.0"}
+
+
+@pytest.mark.parametrize("model", ["muse-spark-1.3-contributor", "muse-spark-1.3", "muse-wonder-1.0"])
+def test_install_writes_one_model_everywhere(tmp_path, model):
+    changes = installer.plan(tmp_path, "fixture-org", with_fixes=True, model=model)
+    pinned = f"model_api/{model}"
+    assert json.loads(changes[".opencode/muse-ci/policy.json"])["model"] == pinned
+    assert f'MODEL = "{pinned}"' in changes[".github/scripts/muse_ci.py"]
+    for name in ("pr-review", "fix-pr"):
+        workflow = yaml.load(changes[f".github/workflows/opencode-{name}.yml"], Loader=yaml.BaseLoader)
+        job = next(iter(workflow["jobs"].values()))
+        action = next(step for step in job["steps"] if step.get("uses", "").startswith("anomalyco/"))
+        assert action["with"]["model"] == pinned
+    provider = json.loads(changes["opencode.json"])["provider"]["model_api"]
+    assert provider["models"] == {model: {"name": installer.MODELS[model], "limit": {"context": 1048576, "output": 131072}}}
+    if model != installer.DEFAULT_MODEL:
+        assert not any("contributor" in body.lower() for name, body in changes.items() if name != "AGENTS.md")
+
+
+def test_install_rejects_unlisted_model(tmp_path):
+    with pytest.raises(installer.Conflict, match="model"):
+        installer.plan(tmp_path, "fixture-org", model="muse-spark-1.2-contributor")
+    assert not (tmp_path / ".opencode").exists()
+
+
+def test_reinstall_with_another_model_is_a_conflict(tmp_path):
+    installer.apply(tmp_path, installer.plan(tmp_path, "fixture-org"))
+    with pytest.raises(installer.Conflict):
+        installer.plan(tmp_path, "fixture-org", model="muse-wonder-1.0")
+
+
 def test_membership_and_write_are_independent_and_all_actors_checked():
     payload = event()
     api = API(payload)

@@ -13,7 +13,9 @@ in ordinary language.
 The defaults are `model_api/muse-spark-1.3-contributor` and a distinct repository
 secret named `META_MUSE_CI_API_KEY`. Contributor-tier content may be used for
 training. The skill discloses that choice before repository activation and
-honors an existing owner decision. A compatible private `repo-secrets` skill
+honors an existing owner decision. On the owner's explicit request, the
+installer's `--model` option selects `muse-spark-1.3` (standard tier, no
+training) or `muse-wonder-1.0` instead. A compatible private `repo-secrets` skill
 can provision the key; other users receive a secure manual setup path followed
 by a secret-name check. No private plugin is required.
 

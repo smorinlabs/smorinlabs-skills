@@ -36,19 +36,28 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    the helper's filename policy where needed. Preparation refuses common
    credential-like tracked files; arbitrary embedded secrets need human inspection.
 
-3. **Set the model and credential contract.** These templates use
-   `model_api/muse-spark-1.3-contributor` at `https://api.meta.ai/v1` and the
+3. **Set the model and credential contract.** The default model is
+   `model_api/muse-spark-1.3-contributor` at `https://api.meta.ai/v1`, with the
    repository Actions secret `META_MUSE_CI_API_KEY`. The provider reads
    `{env:META_MUSE_CI_API_KEY}`. Use a distinct Meta key for each target repository.
    The contributor tier permits Meta to use submitted content for training;
    disclose that when choosing it for a repository. Honor an existing owner
    decision rather than asking again. A restriction against sharing private
    code with that tier requires a new model decision, never a silent fallback.
+   Use another listed model only when the owner explicitly asks for it, and
+   pass it to the installer as `--model`:
+
+   | `--model` | Use |
+   |---|---|
+   | `muse-spark-1.3-contributor` | Default; Meta may train on submitted content |
+   | `muse-spark-1.3` | Standard tier; no training on submitted content |
+   | `muse-wonder-1.0` | Muse Wonder 1.0, on explicit request |
 
 4. **Prepare the files in an isolated worktree.** Resolve this skill directory
    through its installed path. Run its `scripts/install.py` with the target
    worktree and `--organization` set to the actual owner. Add `--with-fixes` for
-   the requested manual workflow. The default prints a plan; `--apply` writes
+   the requested manual workflow, and `--model` only for an explicitly requested
+   non-default model. The default prints a plan; `--apply` writes
    local files. It never installs secrets or enables workflows. Review its diff.
    Existing project instructions are preserved and the security section is
    appended. Existing OpenCode settings are preserved; conflicting providers,

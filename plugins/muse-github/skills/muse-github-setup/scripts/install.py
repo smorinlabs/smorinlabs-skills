@@ -18,6 +18,13 @@ TEMPLATE_FILES = (
     ".github/workflows/opencode-fix-pr.yml", ".opencode/muse-ci/review.json",
     ".opencode/muse-ci/fix.json", ".opencode/muse-ci/policy.json", ".opencode/muse-ci/NOTICE",
 )
+# The templates pin DEFAULT_MODEL; another listed model is substituted on explicit request.
+DEFAULT_MODEL = "muse-spark-1.3-contributor"
+MODELS = {
+    "muse-spark-1.3-contributor": "Muse Spark 1.3 Contributor",
+    "muse-spark-1.3": "Muse Spark 1.3 Standard",
+    "muse-wonder-1.0": "Muse Wonder 1.0",
+}
 
 
 class Conflict(ValueError):
@@ -49,15 +56,21 @@ def provider_merge(existing: dict, fragment: dict) -> dict:
     return merged
 
 
-def plan(root: Path, organization: str, with_fixes: bool = False) -> dict[str, str]:
+def with_model(body: str, model: str) -> str:
+    return body.replace(MODELS[DEFAULT_MODEL], MODELS[model]).replace(DEFAULT_MODEL, model)
+
+
+def plan(root: Path, organization: str, with_fixes: bool = False, model: str = DEFAULT_MODEL) -> dict[str, str]:
     if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?", organization):
         raise Conflict("organization must be the actual GitHub organization login")
+    if model not in MODELS:
+        raise Conflict(f"model must be one of: {', '.join(MODELS)}")
     result: dict[str, str] = {}
     for name in TEMPLATE_FILES:
         source = TEMPLATES / name
         if not with_fixes and (name.endswith("opencode-fix-pr.yml") or name.endswith("/fix.json")):
             continue
-        body = source.read_text().replace("__MUSE_ORG__", organization)
+        body = with_model(source.read_text().replace("__MUSE_ORG__", organization), model)
         target = destination(root, name)
         if target.exists() and target.read_text() != body:
             raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
@@ -66,7 +79,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False) -> dict[str, s
     if destination(root, "opencode.jsonc").exists():
         raise Conflict("Existing opencode.jsonc requires a manual provider merge; do not add a competing opencode.json")
     config = destination(root, "opencode.json")
-    fragment = json.loads((TEMPLATES / "opencode.json").read_text())
+    fragment = json.loads(with_model((TEMPLATES / "opencode.json").read_text(), model))
     if config.exists():
         existing = json.loads(config.read_text())
         if not isinstance(existing, dict):
@@ -110,6 +123,8 @@ def main() -> int:
     parser.add_argument("worktree", type=Path)
     parser.add_argument("--organization", required=True)
     parser.add_argument("--with-fixes", action="store_true", help="Include the manual new-PR workflow")
+    parser.add_argument("--model", default=DEFAULT_MODEL, choices=MODELS,
+                        help=f"Muse model; use a non-default only on the owner's explicit request (default: {DEFAULT_MODEL})")
     parser.add_argument("--apply", action="store_true", help="Write the listed files; default only prints a plan")
     args = parser.parse_args()
     root = args.worktree.resolve()
@@ -118,7 +133,7 @@ def main() -> int:
                                capture_output=True, text=True)
         if probe.returncode or Path(probe.stdout.strip()).resolve() != root:
             raise Conflict("worktree must name the Git repository root")
-        changes = plan(root, args.organization, args.with_fixes)
+        changes = plan(root, args.organization, args.with_fixes, args.model)
         for name in changes:
             print(("update " if (root / name).exists() else "create ") + name)
         if args.apply:
