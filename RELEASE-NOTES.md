@@ -1,5 +1,17 @@
 # Release Notes
 
+## v0.32.1 — 2026-10-21
+
+### Changed
+
+- `muse-github` 0.1.1 -> 0.2.0: `muse-github-setup` keeps
+  `muse-spark-1.3-contributor` as the default and installs another listed
+  model only on the owner's explicit request. The installer's `--model`
+  option accepts `muse-spark-1.3-contributor`, `muse-spark-1.3` (standard
+  tier, no training on submitted content) or `muse-wonder-1.0`, and writes
+  the chosen model to every template location. Unlisted models, and changing
+  the model on an already-installed repository, are refused (#96).
+
 ## v0.32.0 — 2026-09-28
 
 ### Changed — breaking: the marketplace is now `smorinlabs-skills`
