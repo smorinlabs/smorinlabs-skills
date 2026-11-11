@@ -60,7 +60,7 @@ reported as `absent`, not as an error. SQLite stores are opened read-only
 | `claude` | `~/.claude/projects/*/<uuid>.jsonl` (top level only; sidecar dirs skipped) | last `custom-title` record (`/rename`) | last `ai-title` record | `~/.claude/sessions/<pid>.json` registry: PID alive **and** its UTC start time equals `procStart` |
 | `codex` | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` | `thread_name` in `$CODEX_HOME/session_index.jsonl` | — | `$CODEX_HOME/thread-writer-locks/<uuid>.lock` held open by a process (one `lsof` call) |
 | `muse` | `session-index.db` table `sessions` | canonical claim in `session-names.db` (see below), else `session_name` | `title` | `<session_dir>/.session.lock`: same host, PID alive, process is `muse` or its versioned `muse-bin-*` binary |
-| `opencode` | `opencode.db` table `session_v2` (OpenCode v2.2.7+), else `session` | `slug` | `title` | a running `opencode` process: `--session <id>` in its argv, else its working directory (see `opencode_directory_liveness`) |
+| `opencode` | `opencode.db` table `session_v2` (newer OpenCode releases), else `session` | `slug` | `title` | a running `opencode` process: `--session <id>` in its argv, else its working directory (see `opencode_directory_liveness`) |
 
 Hidden by default (counted as `hidden_subagents`): Codex threads whose
 `thread_source` is `subagent` or `guardian_review`; OpenCode sessions with a

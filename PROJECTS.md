@@ -2374,7 +2374,7 @@ The repo-secrets detection change lives in the private smorin-skills repository.
 
 ## [~] Project P64: session-inventory reads OpenCode's `session_v2` table (session 0.13.0 → 0.13.1)
 
-**Purpose:** OpenCode v2.2.7 writes sessions to `session_v2` in `opencode.db`;
+**Purpose:** Newer OpenCode releases (seen with v2.2.7, and rows from v2.0.29) write sessions to `session_v2` in `opencode.db`;
 the old `session` table stopped receiving rows. `session-inventory` reads only
 `session`, so every OpenCode session created since the change is missing from
 `session-agent-list` (on the reporting machine: 17 sessions in `session_v2`,

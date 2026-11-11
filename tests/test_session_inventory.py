@@ -440,11 +440,11 @@ def test_opencode_slug_children_archive_and_export(home, world):
     assert doc["census"]["opencode"]["hidden_subagents"] == 1
 
 
-# OpenCode v2.2.7 writes to `session_v2`, which keeps every `session` row; the
-# old table stops receiving new ones.
+# Newer OpenCode releases write to `session_v2`, which keeps every `session` row;
+# the old table stops receiving new ones.
 OPENCODE_V2_SCHEMA = """CREATE TABLE session_v2 (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, workspace_id TEXT, parent_id TEXT, slug TEXT NOT NULL,
-  directory TEXT NOT NULL, title TEXT NOT NULL, version TEXT NOT NULL,
+  directory TEXT NOT NULL, title TEXT, version TEXT NOT NULL,
   time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, time_archived INTEGER, time_idle INTEGER)"""
 
 
@@ -452,6 +452,7 @@ def test_opencode_session_v2_rows_are_listed(home):
     ids, data = build_opencode(home)
     ms = lambda t: int(t * 1000)  # noqa: E731
     new, new_child = "ses_new0000000000000000000", "ses_newkid000000000000000"
+    untitled = "ses_untitled00000000000000"
     db = sqlite3.connect(data / "opencode.db")
     db.execute(OPENCODE_V2_SCHEMA)
     db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
@@ -462,12 +463,17 @@ def test_opencode_session_v2_rows_are_listed(home):
         db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
                    " time_created, time_updated) VALUES (?,?,?,?,?,?,?,?,?)",
                    (sid, "p1", parent, slug, "/work/echo", f"title {slug}", "2", ms(NOW - 2 * HOUR), ms(NOW - HOUR)))
+    # session_v2.title is nullable; 6 of 17 rows on the reporting machine had none.
+    db.execute("INSERT INTO session_v2 (id, project_id, slug, directory, title, version, time_created, time_updated)"
+               " VALUES (?,?,?,?,?,?,?,?)",
+               (untitled, "p1", "bare-moth", "/work/echo", None, "2", ms(NOW - 2 * HOUR), ms(NOW - HOUR)))
     db.commit()
     db.close()
 
     doc = inventory(home, "--tool", "opencode")
     got = by_id(doc)
-    assert set(got) == {ids["top"], ids["archived"], new}
+    assert set(got) == {ids["top"], ids["archived"], new, untitled}
+    assert got[untitled]["title"] is None and got[untitled]["name"] == "bare-moth"
     s = got[new]
     assert s["name"] == "swift-hawk" and s["title"] == "title swift-hawk"
     assert s["spawn_dir"] == "/work/echo"
