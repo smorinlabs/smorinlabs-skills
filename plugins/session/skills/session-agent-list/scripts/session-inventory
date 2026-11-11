@@ -375,9 +375,12 @@ def scan_opencode(procs: dict[int, list[str]]) -> tuple[list[dict], dict, int]:
         return [], {"status": "absent", "path": str(db_path)}, 0
     try:
         with open_ro(db_path) as db:
+            # OpenCode v2.2.7+ writes `session_v2`, which keeps every `session` row.
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            table = "session_v2" if "session_v2" in tables else "session"
             rows = db.execute(
                 "SELECT id, parent_id, slug, directory, title, time_created, time_updated, time_archived"
-                " FROM session").fetchall()
+                f" FROM {table}").fetchall()
     except sqlite3.Error as exc:
         raise SourceError(f"opencode: {db_path}: {exc}") from exc
     records, hidden = [], 0

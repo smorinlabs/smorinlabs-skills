@@ -2371,3 +2371,20 @@ The repo-secrets detection change lives in the private smorin-skills repository.
 - [x] [P63-T01] Add the installer `--model` allowlist
 - [x] [P63-T02] Document the model table and explicit-request rule; bump muse-github to 0.2.0
 - [x] [P63-T03] Pass `just all`, open the PR, and merge (#96, merge commit `019b0fb`; released in v0.32.1)
+
+## [~] Project P64: session-inventory reads OpenCode's `session_v2` table (session 0.13.0 → 0.13.1)
+
+**Purpose:** OpenCode v2.2.7 writes sessions to `session_v2` in `opencode.db`;
+the old `session` table stopped receiving rows. `session-inventory` reads only
+`session`, so every OpenCode session created since the change is missing from
+`session-agent-list` (on the reporting machine: 17 sessions in `session_v2`,
+5 in `session`, newest 2026-11-11). Found on 2026-11-11 while building
+smorin-bootstrap's `lost-sessions`.
+
+**Scope:** Read `session_v2` when it exists, otherwise `session`. `session_v2`
+holds every row `session` does, with the same columns and millisecond times.
+Docs name both tables.
+
+- [x] [P64-TS01] Test: a `session_v2`-only session is listed with slug, title, folder, resume, archive and subagent handling; a database with only `session` still works
+- [x] [P64-T01] `scan_opencode` prefers `session_v2`; update `docs/session-inventory-cli.md`
+- [ ] [P64-T02] Bump session to 0.13.1; release notes; pass `just all`, open the PR, and merge

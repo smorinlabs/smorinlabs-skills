@@ -440,6 +440,42 @@ def test_opencode_slug_children_archive_and_export(home, world):
     assert doc["census"]["opencode"]["hidden_subagents"] == 1
 
 
+# OpenCode v2.2.7 writes to `session_v2`, which keeps every `session` row; the
+# old table stops receiving new ones.
+OPENCODE_V2_SCHEMA = """CREATE TABLE session_v2 (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL, workspace_id TEXT, parent_id TEXT, slug TEXT NOT NULL,
+  directory TEXT NOT NULL, title TEXT NOT NULL, version TEXT NOT NULL,
+  time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, time_archived INTEGER, time_idle INTEGER)"""
+
+
+def test_opencode_session_v2_rows_are_listed(home):
+    ids, data = build_opencode(home)
+    ms = lambda t: int(t * 1000)  # noqa: E731
+    new, new_child = "ses_new0000000000000000000", "ses_newkid000000000000000"
+    db = sqlite3.connect(data / "opencode.db")
+    db.execute(OPENCODE_V2_SCHEMA)
+    db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived)"
+               " SELECT id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived FROM session")
+    for sid, parent, slug in ((new, None, "swift-hawk"), (new_child, new, "tiny-wren")):
+        db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
+                   " time_created, time_updated) VALUES (?,?,?,?,?,?,?,?,?)",
+                   (sid, "p1", parent, slug, "/work/echo", f"title {slug}", "2", ms(NOW - 2 * HOUR), ms(NOW - HOUR)))
+    db.commit()
+    db.close()
+
+    doc = inventory(home, "--tool", "opencode")
+    got = by_id(doc)
+    assert set(got) == {ids["top"], ids["archived"], new}
+    s = got[new]
+    assert s["name"] == "swift-hawk" and s["title"] == "title swift-hawk"
+    assert s["spawn_dir"] == "/work/echo"
+    assert s["resume"] == f"cd /work/echo && opencode --session {new}"
+    assert got[ids["archived"]]["archived"] is True
+    assert doc["census"]["opencode"]["hidden_subagents"] == 2
+
+
 # --- filters --------------------------------------------------------------------
 
 def test_tool_filter_is_repeatable(home, world):
