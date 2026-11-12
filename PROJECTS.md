@@ -2372,7 +2372,7 @@ The repo-secrets detection change lives in the private smorin-skills repository.
 - [x] [P63-T02] Document the model table and explicit-request rule; bump muse-github to 0.2.0
 - [x] [P63-T03] Pass `just all`, open the PR, and merge (#96, merge commit `019b0fb`; released in v0.32.1)
 
-## [~] Project P64: session-inventory reads OpenCode's `session_v2` table (session 0.13.0 → 0.13.1)
+## [x] Project P64: session-inventory reads OpenCode's `session_v2` table (session 0.13.0 → 0.13.1)
 
 **Purpose:** Newer OpenCode releases (seen with v2.2.7, and rows from v2.0.29) write sessions to `session_v2` in `opencode.db`;
 the old `session` table stopped receiving rows. `session-inventory` reads only
@@ -2391,4 +2391,4 @@ Docs name both tables.
       resume or export command, and counted in `sources.opencode.legacy_only`; a v2 `fork_session_id` gives fork
       lineage and stays listed (CodeRabbit review on PR #99)
 - [x] [P64-T03] `scan_opencode` adds legacy-only rows and v2 fork lineage; docs name `legacy_only`
-- [ ] [P64-T02] Bump session to 0.13.1; release notes; pass `just all`, open the PR, and merge
+- [x] [P64-T02] Bump session to 0.13.1; release notes; pass `just all`, open the PR, and merge (#99; released in v0.32.2)
