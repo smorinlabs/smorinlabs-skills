@@ -373,26 +373,39 @@ def scan_opencode(procs: dict[int, list[str]]) -> tuple[list[dict], dict, int]:
     db_path = data_home() / "opencode" / "opencode.db"
     if not db_path.is_file():
         return [], {"status": "absent", "path": str(db_path)}, 0
+    cols = "id, parent_id, slug, directory, title, time_created, time_updated, time_archived"
     try:
         with open_ro(db_path) as db:
-            # Newer OpenCode releases write `session_v2`, which keeps every `session` row.
+            # Newer OpenCode releases write `session_v2`, which imports the old `session` rows. The
+            # import stops once OpenCode marks the migration done, so a row written to `session`
+            # afterwards exists only there: list it as `legacy_only`, with no v2 command for it.
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-            table = "session_v2" if "session_v2" in tables else "session"
-            rows = db.execute(
-                "SELECT id, parent_id, slug, directory, title, time_created, time_updated, time_archived"
-                f" FROM {table}").fetchall()
+            legacy = []
+            if "session_v2" in tables:
+                v2_cols = {r[1] for r in db.execute("PRAGMA table_info(session_v2)")}
+                fork_col = "fork_session_id" if "fork_session_id" in v2_cols else "NULL"
+                rows = db.execute(f"SELECT {cols}, {fork_col} FROM session_v2").fetchall()
+                if "session" in tables:
+                    legacy = db.execute(f"SELECT {cols}, NULL FROM session"
+                                        " WHERE id NOT IN (SELECT id FROM session_v2)").fetchall()
+            else:
+                rows = db.execute(f"SELECT {cols}, NULL FROM session").fetchall()
     except sqlite3.Error as exc:
         raise SourceError(f"opencode: {db_path}: {exc}") from exc
     records, hidden = [], 0
-    for sid, parent, slug, directory, title, created, updated, archived in rows:
+    legacy_ids = {row[0] for row in legacy}
+    for sid, parent, slug, directory, title, created, updated, archived, fork in rows + legacy:
         rec = new_record("opencode", sid)
         rec.update(name=slug, title=title, spawn_dir=directory or None, archived=archived is not None,
                    created=iso_from_epoch(created / 1e3), updated=iso_from_epoch(updated / 1e3),
-                   export_command=f"opencode export {sid}", live_basis="no opencode process")
+                   export_command=None if sid in legacy_ids else f"opencode export {sid}",
+                   live_basis="no opencode process")
         if parent:
             rec["lineage"] = {"kind": "subagent", "parent_id": parent}
             rec["_hidden"] = True
             hidden += 1
+        elif fork:  # a user fork: listed, like Codex and Muse forks
+            rec["lineage"] = {"kind": "fork", "parent_id": fork}
         records.append(rec)
 
     by_dir: dict[str, list[dict]] = {}
@@ -417,11 +430,13 @@ def scan_opencode(procs: dict[int, list[str]]) -> tuple[list[dict], dict, int]:
     for rec in records:
         if rec["live"] == "yes":
             rec["resume_blocked"] = "running"
+        elif rec["id"] in legacy_ids:
+            rec["resume_blocked"] = "legacy_only"
         elif not rec["spawn_dir"]:
             rec["resume_blocked"] = "no_workspace"
         else:
             rec["resume"] = f"{cd_prefix(rec['spawn_dir'])}opencode --session {rec['id']}"
-    return records, {"status": "ok", "path": str(db_path)}, hidden
+    return records, {"status": "ok", "path": str(db_path), "legacy_only": len(legacy_ids)}, hidden
 
 
 # --- list ---------------------------------------------------------------------

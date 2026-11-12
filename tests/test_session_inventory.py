@@ -482,6 +482,61 @@ def test_opencode_session_v2_rows_are_listed(home):
     assert doc["census"]["opencode"]["hidden_subagents"] == 2
 
 
+def test_opencode_legacy_only_rows_are_listed_without_commands(home):
+    # OpenCode stops importing `session` into `session_v2` once its migration is marked done, so a row
+    # written to the old table afterwards exists only there. List it, but offer no v2 command for it.
+    ids, data = build_opencode(home)
+    ms = lambda t: int(t * 1000)  # noqa: E731
+    new = "ses_new0000000000000000000"
+    db = sqlite3.connect(data / "opencode.db")
+    db.execute(OPENCODE_V2_SCHEMA)
+    db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived)"
+               " SELECT id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived FROM session WHERE id = ?", (ids["top"],))
+    db.execute("INSERT INTO session_v2 (id, project_id, slug, directory, title, version, time_created, time_updated)"
+               " VALUES (?,?,?,?,?,?,?,?)", (new, "p1", "swift-hawk", "/work/echo", "t", "2",
+                                             ms(NOW - 2 * HOUR), ms(NOW - HOUR)))
+    db.commit()
+    db.close()
+
+    doc = inventory(home, "--tool", "opencode")
+    got = by_id(doc)
+    assert set(got) == {ids["top"], ids["archived"], new}  # the legacy-only child stays hidden
+    legacy = got[ids["archived"]]
+    assert legacy["resume"] is None and legacy["resume_blocked"] == "legacy_only"
+    assert legacy["export_command"] is None
+    assert got[new]["resume"] == f"cd /work/echo && opencode --session {new}"
+    assert got[ids["top"]]["resume_blocked"] is None
+    assert doc["sources"]["opencode"]["legacy_only"] == 2  # archived + the hidden child
+    assert doc["census"]["opencode"]["hidden_subagents"] == 1
+
+
+def test_opencode_v2_fork_keeps_its_lineage_and_stays_listed(home):
+    ids, data = build_opencode(home)
+    ms = lambda t: int(t * 1000)  # noqa: E731
+    fork = "ses_fork000000000000000000"
+    db = sqlite3.connect(data / "opencode.db")
+    db.execute(OPENCODE_V2_SCHEMA.replace("parent_id TEXT,", "parent_id TEXT, fork_session_id TEXT,"))
+    db.execute("INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived)"
+               " SELECT id, project_id, parent_id, slug, directory, title, version,"
+               " time_created, time_updated, time_archived FROM session")
+    db.execute("INSERT INTO session_v2 (id, project_id, fork_session_id, slug, directory, title, version,"
+               " time_created, time_updated) VALUES (?,?,?,?,?,?,?,?,?)",
+               (fork, "p1", ids["top"], "keen-lark", "/work/delta", "forked", "2", ms(NOW - 2 * HOUR), ms(NOW - HOUR)))
+    db.commit()
+    db.close()
+
+    doc = inventory(home, "--tool", "opencode")
+    got = by_id(doc)
+    assert got[fork]["lineage"] == {"kind": "fork", "parent_id": ids["top"]}
+    assert got[fork]["resume"] == f"cd /work/delta && opencode --session {fork}"
+    assert got[ids["top"]]["lineage"] is None
+    assert doc["census"]["opencode"]["hidden_subagents"] == 1
+    assert doc["sources"]["opencode"]["legacy_only"] == 0
+
+
 # --- filters --------------------------------------------------------------------
 
 def test_tool_filter_is_repeatable(home, world):

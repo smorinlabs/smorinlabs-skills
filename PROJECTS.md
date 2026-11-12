@@ -2387,4 +2387,8 @@ Docs name both tables.
 
 - [x] [P64-TS01] Test: a `session_v2`-only session is listed with slug, title, folder, resume, archive and subagent handling; a database with only `session` still works
 - [x] [P64-T01] `scan_opencode` prefers `session_v2`; update `docs/session-inventory-cli.md`
+- [x] [P64-TS02] Test: a `session`-only row next to `session_v2` is listed with `resume_blocked: legacy_only` and no
+      resume or export command, and counted in `sources.opencode.legacy_only`; a v2 `fork_session_id` gives fork
+      lineage and stays listed (CodeRabbit review on PR #99)
+- [x] [P64-T03] `scan_opencode` adds legacy-only rows and v2 fork lineage; docs name `legacy_only`
 - [ ] [P64-T02] Bump session to 0.13.1; release notes; pass `just all`, open the PR, and merge
