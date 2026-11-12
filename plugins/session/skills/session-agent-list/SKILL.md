@@ -89,7 +89,7 @@ plugin.
 | Claude Code | `~/.claude/projects/<cwd-slug>/<uuid>.jsonl` | `cd <spawn-dir> && claude --resume <uuid>` | `/rename` title |
 | Codex | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` (default `~/.codex`) | `codex resume <uuid>` | thread name (also resumable) |
 | Muse | `~/.local/share/muse/session-index.db` + per-session dirs | `cd <workspace> && muse resume <uuid>` | canonical name (also resumable) |
-| OpenCode | `~/.local/share/opencode/opencode.db` | `cd <dir> && opencode --session <id>` | slug |
+| OpenCode | `~/.local/share/opencode/opencode.db` (table `session_v2`, else `session`; when `session_v2` exists, `session` rows missing from it are `legacy_only`, no resume) | `cd <dir> && opencode --session <id>` | slug |
 
 - **Liveness** (`live`: `yes` / `no` / `unknown`, with `live_basis`) comes
   from each tool's own evidence: Claude Code's `~/.claude/sessions/<pid>.json`

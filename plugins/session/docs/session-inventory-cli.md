@@ -60,11 +60,12 @@ reported as `absent`, not as an error. SQLite stores are opened read-only
 | `claude` | `~/.claude/projects/*/<uuid>.jsonl` (top level only; sidecar dirs skipped) | last `custom-title` record (`/rename`) | last `ai-title` record | `~/.claude/sessions/<pid>.json` registry: PID alive **and** its UTC start time equals `procStart` |
 | `codex` | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` | `thread_name` in `$CODEX_HOME/session_index.jsonl` | — | `$CODEX_HOME/thread-writer-locks/<uuid>.lock` held open by a process (one `lsof` call) |
 | `muse` | `session-index.db` table `sessions` | canonical claim in `session-names.db` (see below), else `session_name` | `title` | `<session_dir>/.session.lock`: same host, PID alive, process is `muse` or its versioned `muse-bin-*` binary |
-| `opencode` | `opencode.db` table `session` | `slug` | `title` | a running `opencode` process: `--session <id>` in its argv, else its working directory (see `opencode_directory_liveness`) |
+| `opencode` | `opencode.db` table `session_v2` (newer OpenCode releases), plus `session` rows missing from it (`legacy_only`); else `session` | `slug` | `title` | a running `opencode` process: `--session <id>` in its argv, else its working directory (see `opencode_directory_liveness`) |
 
 Hidden by default (counted as `hidden_subagents`): Codex threads whose
 `thread_source` is `subagent` or `guardian_review`; OpenCode sessions with a
-`parent_id`. Codex `forked_from_id` is a user fork — listed, with lineage.
+`parent_id`. Codex `forked_from_id`, Muse `msp_fork_source_session_id` and
+OpenCode v2 `fork_session_id` mark user forks — listed, with lineage.
 
 ## Exit codes (R6.1)
 
@@ -129,8 +130,11 @@ print `-`.
 - The census `live` count covers listed sessions only (hidden subagents excluded).
 - `lineage` is `null` or `{"kind": "fork"|"subagent", "parent_id": "…"}`.
 - `resume` is `null` whenever `resume_blocked` is set: `running` (resuming a
-  running session puts two writers on one transcript) or `no_workspace` (the
-  tool recorded no directory to resume from).
+  running session puts two writers on one transcript), `no_workspace` (the
+  tool recorded no directory to resume from), or `legacy_only` (an OpenCode
+  session only in the old `session` table: OpenCode stops importing that table
+  into `session_v2` once its migration is marked done, so neither `resume` nor
+  `export_command` is offered). `sources.opencode.legacy_only` counts them.
 - Sort: `updated` descending, then `tool`, then `id` (deterministic).
 - Times are UTC ISO 8601 with a `Z` suffix; paths are absolute.
 
