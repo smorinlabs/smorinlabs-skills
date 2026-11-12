@@ -1,5 +1,17 @@
 # Release Notes
 
+## v0.32.2 — 2026-11-11
+
+### Fixed
+
+- `session` 0.13.0 -> 0.13.1: `session-inventory` reads OpenCode's
+  `session_v2` table, which newer OpenCode releases write instead of
+  `session`. Before this, every OpenCode session created since the change was
+  missing from `session-agent-list`. A row that exists only in the old
+  `session` table is listed with `resume_blocked: legacy_only`, no resume or
+  export command, and counted in `sources.opencode.legacy_only`. An OpenCode
+  v2 fork (`fork_session_id`) keeps `fork` lineage and stays listed (#99).
+
 ## v0.32.1 — 2026-10-21
 
 ### Changed
