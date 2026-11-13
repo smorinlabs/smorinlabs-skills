@@ -262,9 +262,11 @@ axis that matters: did anyone agree to it, and who has to move next.
    offer is their call, so it covers ❓ and 💡 items too.
 
    It renders even when step 3 found nothing (step 3's "stop" ends the
-   sweep, not the reply) — that is the plain ✅ case — and when the user stops
+   sweep, not the reply). An empty sweep alone does not earn ✅: the verdict
+   still follows main-work status. It also renders when the user stops
    after the report. Map the close-out table onto the buckets: 🧹 cleaned →
-   done · ⏭ skipped at the user's request → dropped · 🔒 kept because another
+   done · ⏭ skipped at the user's request → not done (parked; dropped only
+   if the user says drop) · 🔒 kept because another
    session owns it → out of scope, left out · 🔒 kept for any other reason
    (e.g. unpushed commits) or 🟡 not yet, gated → not done (main if the gate
    is the main deliverable) · committed to `PROJECTS.md`, an issue, or Linear

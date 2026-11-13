@@ -49,7 +49,7 @@ are out of scope: leave them out of all three buckets.
 
 | Verdict | When |
 |---|---|
-| ✅ **Close this session** | All main work is done, and every small item is dropped or already captured somewhere durable |
+| ✅ **Close this session** | All main work is done, and every small item is done, dropped, or already captured somewhere durable |
 | 🟡 **Main work done — close out N small items?** | All main work is done, and some small items have no home yet |
 | 🔵 **Continue** | Some main work is not done, or a main-work decision is still open |
 
