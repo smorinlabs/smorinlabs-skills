@@ -251,6 +251,17 @@ axis that matters: did anyone agree to it, and who has to move next.
 
    An ID that appears in the report and not in the close-out is a dropped
    item, not a completed sweep.
+6. **Session close-out** — after the close-out table, render the session
+   close-out defined in `references/_shared/close-verdict.md`: is this
+   session's main work done, and should it close? Use the sweep's IDs for the
+   three buckets (done · needs a decision · not done). Any 🧹/📌/💡 item still
+   without a disposition makes the verdict 🟡, offering do now, drop, or
+   capture. Scope is this session only. Additive — every step above is
+   unchanged.
+
+```harness-kit-shared-references
+close-verdict.md
+```
 
 ## Red Flags
 

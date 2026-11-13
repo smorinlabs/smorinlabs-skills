@@ -605,6 +605,19 @@ The close is `🏁 Close — <verdict>.` (Continue or Close), then:
 - **Decisions are never steps.** When every next move is a decision, no steps
   render — the close is the verdict plus the ask.
 
+### 🚪 Close-out — this session only
+
+After `🏁 Close`, render the session close-out defined in
+`references/_shared/close-verdict.md`: main work versus small items, three
+buckets (done · needs a decision · not done), and a verdict that leans toward
+closing (✅ close · 🟡 main work done, close out N small items? · 🔵 continue).
+It is additive — `🏁 Close` above stays exactly as written; when the two
+disagree, the close-out names why in one line. Reuse the IDs issued above.
+
+```harness-kit-shared-references
+close-verdict.md
+```
+
 ## Launch prompts
 
 Every actionable row ends with a `▶` launch; pick the vehicle by class, and keep

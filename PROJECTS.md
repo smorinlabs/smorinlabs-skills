@@ -2445,3 +2445,39 @@ answers one question in advance; `--name` implies `--new`.
 - [x] [P66-TS06] Test: snapshot lists each session's `dirs`; `launch_dir` defaults to the worktree, accepts a subdirectory or a parent, refuses anything else; `check_launch` reports `cwd_ok` / `agent_ok` (requested 2026-11-13: agents check what dir each session runs from)
 - [x] [P66-TS07] Test: transcript evidence — paths in a live agent's recent transcript are counted per repo (worktrees collapse via the git common dir); at least 3 hits puts a parent-started tab in tier 1; "label names this repo" is a fact that never sets the tier. Live: tier-1 matches went from 0 to the expected session for smorinlabs-skills, shelf, and lost-sessions, about 3 s per snapshot (requested 2026-11-13 after 12 of 30 tabs were found to start in `~/c` or `~`)
 - [x] [P66-TS05] Headless dry-run smoke test (fresh `claude -p`): first run found idea text containing `--version` refused as a flag (fixed: unknown `--word` after idea text starts is idea text; bare `--` ends flags); rerun passed with no side effects
+
+## [~] Project P67: Session close-out verdict for session-recap and session-loose-ends (session plugin, version bump after P66)
+
+**Purpose:** End `session-recap` and `session-loose-ends` with a clear answer to "is this
+session's work done, and should I close it?" — split into the main work versus small items,
+with three buckets (done · needs a decision · not done) and a verdict that leans toward
+closing once the main work is done.
+
+**Requirements:**
+- Verdict scale: ✅ Close this session · 🟡 Main work done — close out N small items? ·
+  🔵 Continue. Small items never force 🔵; they turn ✅ into 🟡.
+- Every small item gets a disposition: do now, drop, or capture durably (PROJECTS.md, a
+  commit, a GitHub issue, or a Linear issue).
+- Scope is this session only; handoffs this session wrote count as evidence for closing.
+- Additive: each skill keeps all existing content. `session-recap` keeps its `🏁 Close`
+  rule unchanged; the new close-out renders after it and names any disagreement.
+- Works when each skill is installed individually by a per-skill installer: one source at
+  `plugins/session/references/close-verdict.md`, vendored by `harness-kit gen` into each
+  skill's `references/_shared/` (the P33 mechanism).
+
+**Out of Scope:** `session-status` (keeps its "no close-or-continue verdict" contract);
+`session-handoff`; `session-agent-list`; changing recap's existing Close criterion.
+
+**Coordination:** P66 (`feat/session-spinoff`) edits the same manifests and also bumps
+session 0.13.1 → 0.14.0. P67 rebases onto P66 after it merges and bumps the version last.
+
+- [x] [P67-TS01] Contract test: source file defines the three verdicts, three buckets, dispositions, and this-session scope
+- [x] [P67-TS02] Recap and loose-ends declare and cite `references/_shared/close-verdict.md`; vendored copies match the source; `session-status` does not cite it
+- [x] [P67-TS03] Additive guard: recap's existing `🏁 Close` rule and loose-ends' close-out table text are unchanged
+- [x] [P67-TS04] Standalone install: copying only a skill directory resolves every `references/` citation
+- [ ] [P67-TS05] Manual: a per-skill installer installs `session-recap` alone (scratch project) places `references/_shared/close-verdict.md`
+- [x] [P67-T01] Write `plugins/session/references/close-verdict.md`
+- [x] [P67-T02] Add the close-out section to `session-recap` after `🏁 Close`
+- [x] [P67-T03] Add the close-out section to `session-loose-ends` after its close-out table
+- [x] [P67-T04] `just gen`; update `docs/skills/session-recap.md` and `docs/skills/session-loose-ends.md`
+- [ ] [P67-T05] After P66 merges: rebase, bump session version, release per the repo's flow
