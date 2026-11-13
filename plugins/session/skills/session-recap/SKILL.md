@@ -616,6 +616,8 @@ It is additive — the `🏁 Close` verdict line and everything above stay exact
 as written; when the two disagree, the close-out names why in one line. Reuse
 the IDs issued above. This skill stays read-only: a 🟡 offer is a
 `/session-loose-ends` launch naming the item IDs, never an action taken here.
+It renders after the reader-steps block, so the close-out verdict is the
+recap's last line; at the tiny tier a ✅ close-out collapses to one line.
 
 ```harness-kit-shared-references
 close-verdict.md

@@ -254,17 +254,21 @@ axis that matters: did anyone agree to it, and who has to move next.
 6. **Session close-out** — after the close-out table, render the session
    close-out defined in `references/_shared/close-verdict.md`: is this
    session's main work done, and should it close? Use the sweep's IDs for the
-   three buckets (done · needs a decision · not done). Any 🧹/📌/💡 item still
-   without a disposition makes the verdict 🟡, offering do now, drop, or
-   capture. Scope is this session only. Additive — every step above is
-   unchanged.
+   three buckets (done · needs a decision · not done). Any *small*
+   🧹/📌/💡/❓ item still without a disposition makes the verdict 🟡,
+   offering do now, drop, or capture. Unfinished main work (often a 📌) or an
+   open main-work ❓ makes it 🔵. Scope is this session only. Additive —
+   every step above is unchanged; the user's per-item yes to the close-out
+   offer is their call, so it covers ❓ and 💡 items too.
 
    It renders even when step 3 found nothing (step 3's "stop" ends the
    sweep, not the reply) — that is the plain ✅ case — and when the user stops
    after the report. Map the close-out table onto the buckets: 🧹 cleaned →
-   done · 🔒 kept with a reason or ⏭ skipped at the user's request → dropped ·
-   committed to `PROJECTS.md`, an issue, or Linear → captured · handed off as
-   a paste prompt only → still open, so 🟡.
+   done · ⏭ skipped at the user's request → dropped · 🔒 kept because another
+   session owns it → out of scope, left out · 🔒 kept for any other reason
+   (e.g. unpushed commits) or 🟡 not yet, gated → not done (main if the gate
+   is the main deliverable) · committed to `PROJECTS.md`, an issue, or Linear
+   → captured · handed off as a paste prompt only → still open, so 🟡.
 
 ```harness-kit-shared-references
 close-verdict.md

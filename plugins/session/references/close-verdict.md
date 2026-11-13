@@ -29,14 +29,19 @@ Render three short lists, main work first in each, small items after:
 
 | Bucket | Holds |
 |---|---|
-| ✅ **Done** | Finished and verified (merged, committed, written, handed off) |
+| ✅ **Done** | Finished and verified (merged, committed, written, or carried by a handoff document this session wrote) |
 | ❓ **Needs a decision** | Open forks only the user can settle, each with a recommendation |
 | ⬜ **Not done** | Remaining work, each tagged **main** or **small** |
 
 Reuse the IDs the skill already issued (`D1`, `C2`, `W1`, …). Never restate an
 item in full that the report above already explains; name it by ID and a few
 words. An empty bucket renders as one line (`❓ Needs a decision — none`), never
-silently disappears.
+silently disappears. Exception: when the skill's own output is at its smallest
+size (for example, `session-recap`'s tiny tier) and the verdict is ✅, the whole
+close-out may collapse to one line: `🚪 ✅ Close this session — <evidence>`.
+
+Items that belong to another session (its worktree, its branch, its open PR)
+are out of scope: leave them out of all three buckets.
 
 ## Step 3 — the verdict
 
@@ -63,13 +68,16 @@ List each small item once, with one recommended disposition:
 - **Capture** — keep it, but outside this session: a `PROJECTS.md` entry, a
   commit, a GitHub issue, or a Linear issue (via `a2l`).
 
-Then ask: **"Main work is done. Want me to close out these N items?"** Once each
-item is done, dropped, or captured, the verdict becomes ✅.
+Then make the offer. Once each item is done, dropped, or captured, the verdict
+becomes ✅. The offer's form depends on whether the skill can act:
 
-A read-only skill (`session-recap`) recommends and hands off, never executes:
-its offer is a `/session-loose-ends` launch naming the item IDs. Only an acting
-skill (`session-loose-ends`) carries out the dispositions, item by item, with
-the user's confirmation.
+- **Acting skill** (`session-loose-ends`) asks: **"Main work is done. Want me
+  to close out these N items?"** It then carries out the dispositions item by
+  item. The user's yes to a specific item is the user's call, so it also
+  covers ❓ and 💡 items the sweep otherwise marks report-only — for example,
+  capturing an `S#` idea with `/project-add` after the user says yes to it.
+- **Read-only skill** (`session-recap`) never executes. Its offer is a launch:
+  `▶ Prompt — paste this to close out N items: /session-loose-ends "S1 — …"`.
 
 A prompt handed to the user (a paste-ready `▶ Prompt`) is not a durable
 capture. An item whose only home is such a prompt still counts as open, so the
@@ -77,8 +85,13 @@ verdict stays 🟡.
 
 ### Shape
 
+Rendered last, after everything else the skill prints (in `session-recap`,
+after the reader-steps block, still inside the `🏁 Close` zone). Its label is
+bold text, not a heading, so it never reads as a new top-level section.
+Example from the acting skill:
+
 ```
-## 🚪 Close-out — this session only
+**🚪 Close-out — this session only**
 ✅ Done        main: P67 shipped (merged #104) · small: C1 worktree removed
 ❓ Decisions   none
 ⬜ Not done    small: S1 retry-backoff idea (unrecorded)
