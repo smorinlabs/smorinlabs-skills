@@ -2409,8 +2409,8 @@ smorinlabs/harness-kit#31.
 
 **Out of Scope:** per-plugin Codex policy overrides; Claude-only plugins (none today).
 
-- [ ] [P65-TS01] `just gen-check` passes, and fails when `.agents/plugins/marketplace.json` is deleted
-- [ ] [P65-TS02] Scratch-`CODEX_HOME` transcript from the PR branch: `marketplace add` loads `.agents/plugins/marketplace.json`, 16 plugins listed, `plugin add explain@smorinlabs-skills` succeeds
-- [ ] [P65-T01] Pin harness-kit `v0.4.0`, set `display_name`, run `just gen`, commit the generated manifest
+- [x] [P65-TS01] `just gen-check` passes, and fails when `.agents/plugins/marketplace.json` is deleted
+- [x] [P65-TS02] Scratch-`CODEX_HOME` transcript from the PR branch: `marketplace add` loads `.agents/plugins/marketplace.json`, 16 plugins listed, `plugin add explain@smorinlabs-skills` succeeds
+- [x] [P65-T01] Pin harness-kit `v0.4.0`, set `display_name`, run `just gen`, commit the generated manifest
 - [x] [P65-T02] README and `docs/skills/*` Codex install instructions use the two commands; local clone kept as the development path
 - [ ] [P65-T03] Release per the repo's flow (`release/next` → PR → merge commit → tag the merge commit)
