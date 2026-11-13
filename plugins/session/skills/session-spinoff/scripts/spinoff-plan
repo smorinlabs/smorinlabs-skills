@@ -11,10 +11,16 @@ Verbs (all print JSON to stdout; refusals print to stderr and exit 2):
       Validate the invocation flags and print the parsed form.
   snapshot --repo PATH
       Read Rex sessions, each tab's working directory and agent, the current
-      agent, and the connected app clients; assign each session a tier
-      (1 = a tab already works in the target repo or its worktrees).
+      agent, and the connected app clients. For each tab running an agent,
+      read the tail of its transcript (found by PID through the sibling
+      session-inventory) and count paths per repo. Assign each session a tier:
+      1 = a tab started in the target repo or its worktrees, or its agent
+      touched the repo at least HIT_THRESHOLD times recently.
       Read-only: it runs `rex ls`, `rex session inspect`, `rex block call
       ... process`, `rex client ls`, and `git rev-parse`, nothing else.
+  verify-launch --session S --block B --expect-dir DIR --agent NAME
+      Check that the new tab runs NAME with its working directory at DIR.
+      Exit 0 when both hold, 3 when either does not (JSON says which).
   commands [--brief-file PATH]   (plan JSON on stdin)
       Build the worktree, launch, and jump commands. Pure: runs nothing.
       The brief is read from --brief-file when given, so free text never has
@@ -36,6 +42,8 @@ import sys
 from pathlib import Path
 
 AGENTS = ("claude", "codex", "muse")
+HIT_THRESHOLD = 3            # transcript path hits that count as "working in this repo"
+TRANSCRIPT_TAIL = 300_000    # bytes read from the end of each live agent's transcript
 VALUE_FLAGS = ("--session", "--name", "--repo")
 BOOL_FLAGS = ("--new", "--dry-run") + tuple(f"--{a}" for a in AGENTS)
 
@@ -110,30 +118,82 @@ def detect_agent(process: dict) -> str | None:
     return name if name in AGENTS else None
 
 
+def repo_hits(text: str, home: str, root_of) -> dict:
+    """Count absolute paths under home in text, grouped by the repo they belong to.
+
+    root_of(path) returns a repo's git common dir, or None for non-repo paths,
+    so every worktree of a repo counts toward the same repo.
+    """
+    hits: dict = {}
+    for path in re.findall(re.escape(home.rstrip("/")) + r"/[A-Za-z0-9._/\-]+", text):
+        common = root_of(path)
+        if common:
+            hits[common] = hits.get(common, 0) + 1
+    return hits
+
+
+def label_names_repo(label: str, repo_name: str) -> bool:
+    """True when the repo name's words appear, in order and adjacent, in the label."""
+    words = [w for w in re.split(r"[^a-z0-9]+", label.lower()) if w]
+    want = [w for w in re.split(r"[^a-z0-9]+", repo_name.lower()) if w]
+    if not want:
+        return False
+    return any(words[i:i + len(want)] == want for i in range(len(words) - len(want) + 1))
+
+
+def _repo_name(common_dir: str) -> str:
+    path = Path(common_dir)
+    return path.parent.name if path.name == ".git" else path.name.removesuffix(".git")
+
+
 def classify_sessions(sessions: list[dict], target_common_dir: str) -> list[dict]:
     """Assign each Rex session a tier from facts; order only by facts.
 
-    Tier 1: at least one tab works in the target repo or one of its worktrees.
-    Tier 2: everything else. Within tier 1, more tabs in the repo come first;
-    otherwise Rex's own order is kept. Ordering by what a label *means* is left
-    to the model running the skill, which may reorder only within a tier.
+    Tier 1: a tab started in the target repo or one of its worktrees, or the
+    agent in a tab touched the repo at least HIT_THRESHOLD times in its recent
+    transcript. Tier 2: everything else. Within tier 1, tabs started in the
+    repo come first, then more transcript hits; tier 2 keeps Rex's order. A
+    label naming the repo is reported as a fact but never sets the tier.
+    Ordering by what a label *means* is left to the model running the skill,
+    which may reorder only within a tier.
     """
+    repo_name = _repo_name(target_common_dir)
     out = []
     for index, s in enumerate(sessions):
         tabs = [tab for w in s.get("windows", []) for tab in w.get("tabs", [])]
         repo_tabs = sum(1 for tab in tabs if tab.get("repo_dir") == target_common_dir)
+        hits = sum((tab.get("touched") or {}).get(target_common_dir, 0) for tab in tabs)
         agents = sorted({tab["agent"] for tab in tabs if tab.get("agent")})
+        dirs = list(dict.fromkeys(tab["cwd"] for tab in tabs if tab.get("cwd")))
+        names_repo = label_names_repo(s.get("label", ""), repo_name)
         facts = []
         if repo_tabs:
             facts.append(f"{repo_tabs} tab{'s' if repo_tabs != 1 else ''} in this repo")
+        if hits:
+            facts.append(f"agent touched this repo {hits}× recently")
+        if names_repo:
+            facts.append("label names this repo")
         if agents:
             facts.append("running " + ", ".join(agents))
-        out.append({**s, "tier": 1 if repo_tabs else 2, "repo_tabs": repo_tabs,
-                    "agents": agents, "facts": facts, "_index": index})
-    out.sort(key=lambda s: (s["tier"], -s["repo_tabs"], s["_index"]))
+        tier = 1 if repo_tabs or hits >= HIT_THRESHOLD else 2
+        out.append({**s, "tier": tier, "repo_tabs": repo_tabs, "repo_hits": hits,
+                    "label_names_repo": names_repo, "agents": agents, "dirs": dirs,
+                    "facts": facts, "_index": index})
+    out.sort(key=lambda s: (s["tier"], -s["repo_tabs"], -s["repo_hits"] if s["tier"] == 1 else 0,
+                            s["_index"]))
     for s in out:
         del s["_index"]
     return out
+
+
+def check_launch(process: dict, expect_dir: str, agent: str) -> dict:
+    """Did the new tab start the expected agent in the expected directory?"""
+    cwd = (process.get("foreground") or {}).get("cwd")
+    cwd_ok = bool(cwd) and os.path.realpath(cwd) == os.path.realpath(expect_dir)
+    running = detect_agent(process)
+    agent_ok = running == agent
+    return {"ok": cwd_ok and agent_ok, "cwd": cwd, "agent": running,
+            "cwd_ok": cwd_ok, "agent_ok": agent_ok}
 
 
 def jump_command(client: str | None, session_id: str, window_id: str | None) -> list[str]:
@@ -164,21 +224,28 @@ def build_commands(plan: dict) -> dict:
     repo = str(Path(plan["repo"]).resolve())
     wt = os.path.normpath(os.path.join(repo, plan["worktree"]))  # relative → against the repo
     base = plan["default_branch"].removeprefix("origin/")
+    launch_dir = os.path.normpath(os.path.join(wt, plan.get("launch_dir") or "."))
+    inside = launch_dir == wt or launch_dir.startswith(wt + os.sep)
+    parent = wt.startswith(launch_dir.rstrip(os.sep) + os.sep)
+    if not (inside or parent):
+        raise SpinoffArgError(f"launch_dir {launch_dir} must be the worktree, inside it, "
+                              f"or a parent of it ({wt})")
     agent_argv = [plan["agent"], plan["brief"]]
     if plan["placement"] == "new":
         launch = ["rex", "new", plan["name"], "--window", plan["tab_label"],
-                  "-c", wt, "--json", "--", *agent_argv]
+                  "-c", launch_dir, "--json", "--", *agent_argv]
     else:
         launch = ["rex", "window", "new", "-s", plan["session"], plan["tab_label"],
-                  "-c", wt, "--json", "--", *agent_argv]
+                  "-c", launch_dir, "--json", "--", *agent_argv]
     cmds = {
         "worktree": ["git", "-C", repo, "fetch", "origin"],
         "worktree_add": ["git", "-C", repo, "worktree", "add", "-b", plan["branch"], wt,
                          f"origin/{base}"],
         "launch": launch,
+        "launch_dir": launch_dir,
         "jump_template": jump_command(plan.get("client"), "<session_id>", "<window_id>"),
     }
-    cmds["shell"] = {k: shlex.join(v) for k, v in cmds.items()}
+    cmds["shell"] = {k: shlex.join(v) for k, v in cmds.items() if isinstance(v, list)}
     return cmds
 
 
@@ -207,6 +274,58 @@ def git_common_dir(path: str) -> str | None:
     return str(Path(proc.stdout.strip()).resolve()) if proc.returncode == 0 else None
 
 
+class _RepoRoots:
+    """Map a path to its repo's git common dir, caching every lookup."""
+
+    def __init__(self):
+        self.by_root: dict = {}
+        self.by_dir: dict = {}
+
+    def __call__(self, path: str) -> str | None:
+        d = path if os.path.isdir(path) else os.path.dirname(path)
+        seen = []
+        while d and d != os.path.dirname(d):
+            if d in self.by_dir:
+                found = self.by_dir[d]
+                break
+            seen.append(d)
+            if os.path.exists(os.path.join(d, ".git")):
+                if d not in self.by_root:
+                    self.by_root[d] = git_common_dir(d)
+                found = self.by_root[d]
+                break
+            d = os.path.dirname(d)
+        else:
+            found = None
+        for s in seen:
+            self.by_dir[s] = found
+        return found
+
+
+def _live_transcripts() -> tuple[dict, str]:
+    """PID → transcript path for running agents, via the sibling session-inventory."""
+    inv = Path(__file__).resolve().parent.parent.parent / "session-agent-list" / "scripts" / "session-inventory"
+    if not inv.exists():
+        return {}, f"unavailable: {inv} not found"
+    data = _run_json([sys.executable, str(inv), "list", "--live", "--json"])
+    if data is None:
+        return {}, "unavailable: session-inventory failed"
+    rows = data if isinstance(data, list) else data.get("sessions", [])
+    return {r["pid"]: r["transcript"] for r in rows if r.get("pid") and r.get("transcript")}, "ok"
+
+
+def _touched(transcript: str, roots: _RepoRoots) -> dict:
+    try:
+        with open(transcript, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - TRANSCRIPT_TAIL))
+            text = f.read().decode("utf-8", "ignore")
+    except OSError:
+        return {}
+    hits = repo_hits(text, os.path.expanduser("~"), roots)
+    return dict(sorted(hits.items(), key=lambda kv: -kv[1])[:5])
+
+
 def _blocks(window: dict):
     for layer in window.get("layers", []):
         yield from layer.get("blocks", [])
@@ -217,6 +336,8 @@ def snapshot(repo: str) -> dict:
     if target is None:
         raise SpinoffArgError(f"{repo} is not inside a git repository")
     listing = _run_json(["rex", "ls", "--json"]) or {"sessions": []}
+    transcripts, evidence = _live_transcripts()
+    roots = _RepoRoots()
     sessions = []
     for s in listing.get("sessions", []):
         sid = s["session_id"]
@@ -226,10 +347,13 @@ def snapshot(repo: str) -> dict:
             tabs = []
             for b in _blocks(w):
                 proc = _run_json(["rex", "block", "call", "-s", sid, "-b", b["block_id"], "process"]) or {}
-                cwd = (proc.get("foreground") or {}).get("cwd")
+                fg = proc.get("foreground") or {}
+                cwd = fg.get("cwd")
+                transcript = transcripts.get(fg.get("pid"))
                 tabs.append({"block_id": b["block_id"], "cwd": cwd,
                              "repo_dir": git_common_dir(cwd) if cwd else None,
-                             "agent": detect_agent(proc)})
+                             "agent": detect_agent(proc),
+                             "touched": _touched(transcript, roots) if transcript else {}})
             windows.append({"window_id": w["window_id"], "label": w.get("label"), "tabs": tabs})
         sessions.append({"session_id": sid, "label": s.get("label", ""), "windows": windows})
 
@@ -244,6 +368,7 @@ def snapshot(repo: str) -> dict:
 
     return {
         "target_common_dir": target,
+        "transcript_evidence": evidence,
         "current_agent": current_agent,
         "app_clients": apps,
         "labels_in_use": [s["label"] for s in sessions],
@@ -262,6 +387,11 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("raw", nargs=argparse.REMAINDER)
     s = sub.add_parser("snapshot")
     s.add_argument("--repo", required=True)
+    v = sub.add_parser("verify-launch")
+    v.add_argument("--session", required=True)
+    v.add_argument("--block", required=True)
+    v.add_argument("--expect-dir", required=True)
+    v.add_argument("--agent", required=True, choices=AGENTS)
     c = sub.add_parser("commands")
     c.add_argument("--brief-file", help="read the brief from this file instead of the plan's 'brief'")
     ns = p.parse_args(argv)
@@ -269,6 +399,14 @@ def main(argv: list[str] | None = None) -> int:
         if ns.verb == "args":
             raw = ns.raw[1:] if ns.raw[:1] == ["--"] else ns.raw
             result = parse_args(raw)
+        elif ns.verb == "verify-launch":
+            proc = _run_json(["rex", "block", "call", "-s", ns.session, "-b", ns.block, "process"])
+            if proc is None:
+                raise SpinoffArgError(f"could not read block {ns.block} in {ns.session}")
+            result = check_launch(proc, ns.expect_dir, ns.agent)
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return 0 if result["ok"] else 3
         elif ns.verb == "snapshot":
             result = snapshot(ns.repo)
         else:

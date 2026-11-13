@@ -268,3 +268,108 @@ def test_cli_args_verb_keeps_inner_double_dash():
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)
     assert out["idea"] == "x --new" and out["agent"] == "muse"
+
+
+# ── P66-TS06: directories (session dirs shown, launch dir chosen and verified) ──
+
+
+def test_classify_lists_each_sessions_dirs_once():
+    sessions = [session("s1", "a", [tab("/code/shelf", TARGET), tab("/code/shelf", TARGET),
+                                    tab("/code/other", "/code/other/.git"), tab(None, None)])]
+    out = sp.classify_sessions(sessions, TARGET)
+    assert out[0]["dirs"] == ["/code/shelf", "/code/other"]
+
+
+def test_launch_dir_defaults_to_worktree():
+    plan = {**BASE_PLAN, "placement": "new", "name": "n"}
+    launch = sp.build_commands(plan)["launch"]
+    assert launch[launch.index("-c") + 1] == "/code/shelf-shelf-tags"
+
+
+@pytest.mark.parametrize("launch_dir, expected", [
+    ("packages/api", "/code/shelf-shelf-tags/packages/api"),   # subdir, relative to the worktree
+    ("/code", "/code"),                                          # parent, for multi-repo ideas
+])
+def test_launch_dir_subdir_or_parent(launch_dir, expected):
+    plan = {**BASE_PLAN, "placement": "new", "name": "n", "launch_dir": launch_dir}
+    cmds = sp.build_commands(plan)
+    assert cmds["launch"][cmds["launch"].index("-c") + 1] == expected
+    assert cmds["launch_dir"] == expected
+
+
+def test_launch_dir_outside_worktree_line_is_refused():
+    plan = {**BASE_PLAN, "placement": "new", "name": "n", "launch_dir": "/elsewhere/repo"}
+    with pytest.raises(sp.SpinoffArgError) as exc:
+        sp.build_commands(plan)
+    assert "launch_dir" in str(exc.value)
+
+
+def test_check_launch_matches_cwd_and_agent():
+    proc = {"foreground": {"argv0": "codex", "cwd": "/code/shelf-shelf-tags"}}
+    got = sp.check_launch(proc, "/code/shelf-shelf-tags", "codex")
+    assert got == {"ok": True, "cwd": "/code/shelf-shelf-tags", "agent": "codex",
+                   "cwd_ok": True, "agent_ok": True}
+
+
+def test_check_launch_flags_wrong_dir_and_agent():
+    proc = {"foreground": {"argv0": "zsh", "cwd": "/tmp/x"}}
+    got = sp.check_launch(proc, "/code/shelf-shelf-tags", "codex")
+    assert got["ok"] is False and got["cwd_ok"] is False and got["agent_ok"] is False
+
+
+# ── P66-TS07: transcript evidence + label fact (sessions started in a parent dir) ──
+
+
+def fake_root_of(path):
+    if path.startswith("/code/shelf"):          # /code/shelf and /code/shelf-wt are one repo
+        return TARGET
+    if path.startswith("/code/other"):
+        return "/code/other/.git"
+    return None
+
+
+def test_repo_hits_collapses_worktrees_and_ignores_non_repo_paths():
+    text = ('{"file_path": "/code/shelf/a.py"} git -C /code/shelf-wt status '
+            '"/code/other/x" /code/shelf/b.py /nowhere/z')
+    hits = sp.repo_hits(text, "/code", fake_root_of)
+    assert hits == {TARGET: 3, "/code/other/.git": 1}
+
+
+def test_transcript_hits_put_a_parent_started_tab_in_tier_1():
+    s = session("s1", "rslpb-p02-merge", [{**tab("/code", None, "claude"), "touched": {TARGET: 5}}])
+    out = sp.classify_sessions([s], TARGET)
+    assert out[0]["tier"] == 1
+    assert "agent touched this repo 5× recently" in out[0]["facts"]
+
+
+def test_transcript_hits_below_threshold_stay_tier_2_but_are_shown():
+    s = session("s1", "x", [{**tab("/code", None, "claude"), "touched": {TARGET: 2}}])
+    out = sp.classify_sessions([s], TARGET)
+    assert out[0]["tier"] == 2
+    assert "agent touched this repo 2× recently" in out[0]["facts"]
+
+
+def test_tier_1_orders_started_in_repo_then_hits():
+    started = session("a", "a", [tab("/code/shelf", TARGET)])
+    busy = session("b", "b", [{**tab("/code", None, "codex"), "touched": {TARGET: 40}}])
+    light = session("c", "c", [{**tab("/code", None, "codex"), "touched": {TARGET: 4}}])
+    out = sp.classify_sessions([light, busy, started], TARGET)
+    assert [s["session_id"] for s in out] == ["a", "b", "c"]
+
+
+@pytest.mark.parametrize("label, repo, expected", [
+    ("review-shelf-p27", "shelf", True),
+    ("shelf", "shelf", True),
+    ("bookshelf-ideas", "shelf", False),
+    ("T8-muse-lost-sessions", "lost-sessions", True),
+    ("lost-and-found-sessions", "lost-sessions", False),
+    ("anything", "", False),
+])
+def test_label_names_repo(label, repo, expected):
+    assert sp.label_names_repo(label, repo) is expected
+
+
+def test_label_fact_never_sets_the_tier():
+    out = sp.classify_sessions([session("s1", "review-shelf-p27", [])], TARGET)
+    assert out[0]["tier"] == 2
+    assert "label names this repo" in out[0]["facts"]

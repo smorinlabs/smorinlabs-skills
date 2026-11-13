@@ -10,10 +10,15 @@ launches a fresh Claude Code, Codex, or Muse agent in a Rex tab with the brief
 as its first prompt. Your current session is never modified.
 
 Placement is always your choice. A read-only snapshot sorts your Rex sessions
-into tiers from facts — tier 1 has a tab already working in the target repo or
-one of its worktrees — and the agent orders sessions within each tier by how
-closely their labels relate to the idea. The top three are offered, and "New
-session" is always an option. A
+into tiers from facts — tier 1 has a tab that started in the target repo or one
+of its worktrees, or an agent whose recent transcript shows it working in that
+repo (so sessions started from a parent directory such as `~/c` still match) — and the agent orders sessions within each tier by how
+closely their labels relate to the idea. The top three are offered with the
+directories their tabs work in, and "New session" is always an option. The
+same question confirms the launch directory: the worktree root by default, a
+package directory for monorepo work, or a parent directory for ideas that span
+repos. After launch the skill verifies that the agent is running in that
+directory. A
 new session gets a proposed `<type>-<topic>` name you confirm or edit. The
 agent you are running now is the default. The skill finishes with a receipt
 (Rex session and tab, agent, worktree, branch) and the
