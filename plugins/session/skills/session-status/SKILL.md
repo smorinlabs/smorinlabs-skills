@@ -20,8 +20,8 @@ level the work's own structure calls for.
   the conversation. This is what keeps it a glance instead of a recap — if
   live state matters, that's `session-recap`'s job.
 - **A glance, not a recap.** No owed-item classification, no proof quotes, no
-  launch prompts, no close-or-continue verdict. One status ledger (with its
-  board, when the board rule includes one), then stop.
+  launch prompts. One status ledger (with its board, when the board rule
+  includes one), then one context-only verdict (see *The verdict*), then stop.
 
 ## The two laws
 
@@ -326,6 +326,25 @@ Left in Phase 2 — the board
 
 In real output, only the grid lines in these mockups go inside a fence.
 
+## The verdict
+
+The ledger ends with one compact close-or-continue verdict, using the rules
+in `references/_shared/close-verdict.md` (compact form). It uses only what
+this skill already read: the plan of record and the conversation. It never
+probes git, PRs, or CI to firm it up.
+
+- The ledger above already shows done and left, so the verdict does not
+  repeat the three buckets. It is the verdict line, one evidence line, and,
+  for 🟡, the small items by ID.
+- The evidence line always ends with its source: `from plan + conversation;
+  not checked against git/PR/CI — /session-recap confirms`.
+- No launch prompts: a 🟡 names its items and says `/session-loose-ends`
+  can close them out, in plain text.
+
+```harness-kit-shared-references
+close-verdict.md
+```
+
 ## Red Flags
 
 | Thought | Reality |
@@ -336,11 +355,13 @@ In real output, only the grid lines in these mockups go inside a fence.
 | "The user seems lost — fire this" | Lost routes to `session-recap`. This skill fires only on an explicit status ask, mid-flight. |
 | "Quick git probe, just to be sure" | Probe-free is the contract. Plan of record + conversation, nothing else — live state is `session-recap`'s job. |
 | "Round it to a clean percentage" | Counts come from the plan of record. No invented numbers; a reconstructed plan says it's reconstructed. |
+| "Quick git check so the verdict is solid" | The verdict is context-only by design. Label its source; `/session-recap` is the confirmed version. |
 
 ## See also
 
 - `session-recap` — the heavyweight sibling: cold returns, full orientation,
-  owed-item tables, live git/PR/CI probes, close-or-continue verdict.
+  owed-item tables, live git/PR/CI probes, and a close-or-continue verdict
+  checked against live state.
 - `session-loose-ends` — when the ask is to *clean up* what's dangling, not to
   see progress.
 - `session-handoff` — packaging the session forward for a fresh session.

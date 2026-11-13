@@ -17,8 +17,9 @@ stays fine-grained, but only where you're standing. Read-only *and*
 probe-free — status comes from the plan of record (PROJECTS.md, projects/,
 task lists, plan docs) plus the conversation; it never runs tests or probes
 git/PR/CI, which is what keeps it a glance instead of a recap. No owed-item
-tables, no launch prompts, no verdict — that machinery belongs to
-`session-recap`.
+tables and no launch prompts. It ends with one compact close-or-continue
+verdict built only from that context, labeled as such; the verdict checked
+against live state belongs to `session-recap`.
 
 When the work calls for it, the ledger carries an **ASCII kanban board** of
 what's left. The skill decides each run: it draws one when two or more

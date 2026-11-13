@@ -110,3 +110,10 @@ Some skills keep their own verdict line (for example, `session-recap`'s
 `🏁 Close`). That line stays exactly as written. When the two answers differ,
 add one line naming why, e.g. `🏁 says Continue only because of C1 (cleanup);
 main work is done → 🟡`. Never edit the earlier verdict to match.
+
+## Compact form (context-only skills)
+
+A skill that reads no live state (`session-status`) renders only the verdict
+line, one evidence line ending with its source, and, for 🟡, the small items
+by ID. It never prints the buckets, because its own ledger already shows done
+and left. It never offers to act.
