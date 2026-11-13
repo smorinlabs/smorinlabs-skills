@@ -2440,6 +2440,7 @@ answers one question in advance; `--name` implies `--new`.
 - [x] [P66-T02] `SKILL.md` for `session-spinoff`
 - [x] [P66-T03] Re-carve `session-handoff` description: not for launching a spun-off idea (`session-spinoff`)
 - [x] [P66-T04] Plugin metadata (description, keywords, version 0.14.0), `just gen`, docs page, README row (release notes are written by the release run)
+- [x] [P66-T06] Release per the repo's flow (`release/next` → PR → merge commit → tag the merge commit) (#103; released in v0.33.0)
 - [x] [P66-T05] Dev placement on both tools, `skill-quality` gate against the worktree, `just all`
 - [x] [P66-TS04] Gate: skill-quality layers 1–4 pass on the worktree (static and deep, both tools); skill-reviewer findings 1–9 fixed with regression tests
 - [x] [P66-TS06] Test: snapshot lists each session's `dirs`; `launch_dir` defaults to the worktree, accepts a subdirectory or a parent, refuses anything else; `check_launch` reports `cwd_ok` / `agent_ok` (requested 2026-11-13: agents check what dir each session runs from)
