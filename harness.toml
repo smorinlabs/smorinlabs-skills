@@ -5,7 +5,7 @@
 [marketplace]
 name = "smorinlabs-skills"
 description = "Public cross-platform (Claude Code + Codex) plugin marketplace for smorinlabs"
-version = "0.32.2"
+version = "0.32.3"
 display_name = "smorinlabs skills"
 
 [marketplace.owner]
