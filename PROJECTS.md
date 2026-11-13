@@ -2482,3 +2482,27 @@ session 0.13.1 → 0.14.0. P67 rebases onto P66 after it merges and bumps the ve
 - [x] [P67-T03] Add the close-out section to `session-loose-ends` after its close-out table
 - [x] [P67-T04] `just gen`; update `docs/skills/session-recap.md` and `docs/skills/session-loose-ends.md`
 - [x] [P67-T05] After P66 merged: rebased, bumped session 0.14.0 → 0.15.0, merged as #104; ships in the next `release/next` release
+
+## [x] Project P68: session-status ends with a context-only close verdict (session 0.15.0 → 0.16.0)
+
+**Purpose:** `session-status` ends its ledger with the same close-or-continue verdict as
+`session-recap` and `session-loose-ends` (P67), built only from what it already reads — the
+plan of record and the conversation — and labeled as such.
+
+**Requirements:**
+- Compact form: verdict line, one evidence line ending with its source
+  (`from plan + conversation; not checked against git/PR/CI — /session-recap confirms`),
+  and for 🟡 the small items by ID. No buckets (the ledger shows done and left), no launch prompts.
+- Still probe-free: never checks git, PRs, or CI.
+- Uses the shared `references/close-verdict.md`, vendored into `session-status`.
+- Only the Contract's "A glance" rule, the See also line, and the docs sentence change
+  existing text; everything else is added.
+
+**Out of Scope:** changing `session-recap` or `session-loose-ends` behavior.
+
+- [x] [P68-TS01] Test: `session-status` declares, cites, and carries an identical copy of `close-verdict.md`
+- [x] [P68-TS02] Test: status stays probe-free and carries the source label; the shared file defines the compact form
+- [x] [P68-T01] Add the compact-form subsection to `plugins/session/references/close-verdict.md`
+- [x] [P68-T02] `session-status`: amend the Contract rule and See also; add *The verdict* section and a Red Flags row
+- [x] [P68-T03] `just gen`; update `docs/skills/session-status.md`
+- [x] [P68-T04] Bump session 0.15.0 → 0.16.0, quality check, PR, merge (#106; ships in the next `release/next` release)
