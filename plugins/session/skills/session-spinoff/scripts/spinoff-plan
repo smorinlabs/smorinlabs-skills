@@ -1,0 +1,291 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""spinoff-plan — deterministic helper for the session-spinoff skill.
+
+Verbs (all print JSON to stdout; refusals print to stderr and exit 2):
+
+  args -- <raw skill arguments...>
+      Validate the invocation flags and print the parsed form.
+  snapshot --repo PATH
+      Read Rex sessions, each tab's working directory and agent, the current
+      agent, and the connected app clients; assign each session a tier
+      (1 = a tab already works in the target repo or its worktrees).
+      Read-only: it runs `rex ls`, `rex session inspect`, `rex block call
+      ... process`, `rex client ls`, and `git rev-parse`, nothing else.
+  commands [--brief-file PATH]   (plan JSON on stdin)
+      Build the worktree, launch, and jump commands. Pure: runs nothing.
+      The brief is read from --brief-file when given, so free text never has
+      to be escaped into JSON.
+      This is what --dry-run prints.
+
+Stdlib only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+AGENTS = ("claude", "codex", "muse")
+VALUE_FLAGS = ("--session", "--name", "--repo")
+BOOL_FLAGS = ("--new", "--dry-run") + tuple(f"--{a}" for a in AGENTS)
+
+
+class SpinoffArgError(ValueError):
+    """An invocation the skill must refuse before doing anything."""
+
+
+# ── argument gate ────────────────────────────────────────────────────────
+
+
+def parse_args(argv: list[str]) -> dict:
+    out = {"idea": "", "placement": "ask", "session": None, "name": None,
+           "repo": None, "agent": None, "dry_run": False}
+    words: list[str] = []
+    new = False
+    agents: list[str] = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--":  # everything after a bare -- is idea text
+            words.extend(argv[i + 1:])
+            break
+        if tok in VALUE_FLAGS:
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                raise SpinoffArgError(f"{tok} needs a value")
+            out[tok[2:]] = argv[i + 1]
+            i += 2
+            continue
+        if tok == "--new":
+            new = True
+        elif tok == "--dry-run":
+            out["dry_run"] = True
+        elif tok in tuple(f"--{a}" for a in AGENTS):
+            agents.append(tok[2:])
+        elif tok.startswith("--") and words:
+            words.append(tok)  # idea text has started: "add a --version flag"
+        elif tok.startswith("--"):
+            raise SpinoffArgError(f"unknown flag {tok}; supported: "
+                                  + " ".join(VALUE_FLAGS + BOOL_FLAGS))
+        else:
+            words.append(tok)
+        i += 1
+
+    if len(agents) > 1:
+        raise SpinoffArgError("pass at most one agent flag (--claude, --codex, --muse)")
+    if new and out["session"]:
+        raise SpinoffArgError("--new and --session conflict: choose a new session or an existing one")
+    if out["name"] and out["session"]:
+        raise SpinoffArgError("--name names a new session and cannot be used with --session")
+
+    out["agent"] = agents[0] if agents else None
+    out["idea"] = " ".join(words)
+    if out["session"]:
+        out["placement"] = "session"
+    elif new or out["name"]:
+        out["placement"] = "new"
+    return out
+
+
+# ── small pure helpers ───────────────────────────────────────────────────
+
+
+def slugify(text: str, max_len: int = 40) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:max_len].rstrip("-")
+
+
+def detect_agent(process: dict) -> str | None:
+    argv0 = (process.get("foreground") or {}).get("argv0") or ""
+    name = os.path.basename(argv0.lstrip("-"))
+    return name if name in AGENTS else None
+
+
+def classify_sessions(sessions: list[dict], target_common_dir: str) -> list[dict]:
+    """Assign each Rex session a tier from facts; order only by facts.
+
+    Tier 1: at least one tab works in the target repo or one of its worktrees.
+    Tier 2: everything else. Within tier 1, more tabs in the repo come first;
+    otherwise Rex's own order is kept. Ordering by what a label *means* is left
+    to the model running the skill, which may reorder only within a tier.
+    """
+    out = []
+    for index, s in enumerate(sessions):
+        tabs = [tab for w in s.get("windows", []) for tab in w.get("tabs", [])]
+        repo_tabs = sum(1 for tab in tabs if tab.get("repo_dir") == target_common_dir)
+        agents = sorted({tab["agent"] for tab in tabs if tab.get("agent")})
+        facts = []
+        if repo_tabs:
+            facts.append(f"{repo_tabs} tab{'s' if repo_tabs != 1 else ''} in this repo")
+        if agents:
+            facts.append("running " + ", ".join(agents))
+        out.append({**s, "tier": 1 if repo_tabs else 2, "repo_tabs": repo_tabs,
+                    "agents": agents, "facts": facts, "_index": index})
+    out.sort(key=lambda s: (s["tier"], -s["repo_tabs"], s["_index"]))
+    for s in out:
+        del s["_index"]
+    return out
+
+
+def jump_command(client: str | None, session_id: str, window_id: str | None) -> list[str]:
+    cmd = ["rex"]
+    if client:
+        cmd += ["-C", client]
+    cmd += ["do", "session.select", f"session_id={session_id}"]
+    if window_id:
+        cmd.append(f"window_id={window_id}")
+    return cmd
+
+
+REQUIRED_KEYS = ("repo", "default_branch", "branch", "worktree", "placement",
+                 "tab_label", "agent", "brief")
+
+
+def build_commands(plan: dict) -> dict:
+    missing = [k for k in REQUIRED_KEYS if not plan.get(k)]
+    if plan.get("placement") == "new" and not plan.get("name"):
+        missing.append("name")
+    if plan.get("placement") == "session" and not plan.get("session"):
+        missing.append("session")
+    if missing:
+        raise SpinoffArgError("plan is missing " + ", ".join(missing))
+    if plan["placement"] not in ("new", "session"):
+        raise SpinoffArgError("placement must be 'new' or 'session'")
+
+    repo = str(Path(plan["repo"]).resolve())
+    wt = os.path.normpath(os.path.join(repo, plan["worktree"]))  # relative → against the repo
+    base = plan["default_branch"].removeprefix("origin/")
+    agent_argv = [plan["agent"], plan["brief"]]
+    if plan["placement"] == "new":
+        launch = ["rex", "new", plan["name"], "--window", plan["tab_label"],
+                  "-c", wt, "--json", "--", *agent_argv]
+    else:
+        launch = ["rex", "window", "new", "-s", plan["session"], plan["tab_label"],
+                  "-c", wt, "--json", "--", *agent_argv]
+    cmds = {
+        "worktree": ["git", "-C", repo, "fetch", "origin"],
+        "worktree_add": ["git", "-C", repo, "worktree", "add", "-b", plan["branch"], wt,
+                         f"origin/{base}"],
+        "launch": launch,
+        "jump_template": jump_command(plan.get("client"), "<session_id>", "<window_id>"),
+    }
+    cmds["shell"] = {k: shlex.join(v) for k, v in cmds.items()}
+    return cmds
+
+
+# ── read-only snapshot ───────────────────────────────────────────────────
+
+
+def _run_json(argv: list[str]) -> dict | None:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def git_common_dir(path: str) -> str | None:
+    try:
+        proc = subprocess.run(["git", "-C", path, "rev-parse", "--path-format=absolute",
+                               "--git-common-dir"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return str(Path(proc.stdout.strip()).resolve()) if proc.returncode == 0 else None
+
+
+def _blocks(window: dict):
+    for layer in window.get("layers", []):
+        yield from layer.get("blocks", [])
+
+
+def snapshot(repo: str) -> dict:
+    target = git_common_dir(repo)
+    if target is None:
+        raise SpinoffArgError(f"{repo} is not inside a git repository")
+    listing = _run_json(["rex", "ls", "--json"]) or {"sessions": []}
+    sessions = []
+    for s in listing.get("sessions", []):
+        sid = s["session_id"]
+        detail = _run_json(["rex", "session", "inspect", sid, "--json"]) or {}
+        windows = []
+        for w in detail.get("windows", []):
+            tabs = []
+            for b in _blocks(w):
+                proc = _run_json(["rex", "block", "call", "-s", sid, "-b", b["block_id"], "process"]) or {}
+                cwd = (proc.get("foreground") or {}).get("cwd")
+                tabs.append({"block_id": b["block_id"], "cwd": cwd,
+                             "repo_dir": git_common_dir(cwd) if cwd else None,
+                             "agent": detect_agent(proc)})
+            windows.append({"window_id": w["window_id"], "label": w.get("label"), "tabs": tabs})
+        sessions.append({"session_id": sid, "label": s.get("label", ""), "windows": windows})
+
+    current_agent = None
+    if os.environ.get("REX_SESSION") and os.environ.get("REX_BLOCK"):
+        proc = _run_json(["rex", "block", "call", "-s", os.environ["REX_SESSION"],
+                          "-b", os.environ["REX_BLOCK"], "process"])
+        current_agent = detect_agent(proc or {})
+
+    clients = (_run_json(["rex", "client", "ls", "--json"]) or {}).get("clients", [])
+    apps = [c["client_id"] for c in clients if (c.get("info") or {}).get("kind") == "app"]
+
+    return {
+        "target_common_dir": target,
+        "current_agent": current_agent,
+        "app_clients": apps,
+        "labels_in_use": [s["label"] for s in sessions],
+        "sessions": classify_sessions(sessions, target),
+    }
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="spinoff-plan", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="verb", required=True)
+    a = sub.add_parser("args")
+    a.add_argument("raw", nargs=argparse.REMAINDER)
+    s = sub.add_parser("snapshot")
+    s.add_argument("--repo", required=True)
+    c = sub.add_parser("commands")
+    c.add_argument("--brief-file", help="read the brief from this file instead of the plan's 'brief'")
+    ns = p.parse_args(argv)
+    try:
+        if ns.verb == "args":
+            raw = ns.raw[1:] if ns.raw[:1] == ["--"] else ns.raw
+            result = parse_args(raw)
+        elif ns.verb == "snapshot":
+            result = snapshot(ns.repo)
+        else:
+            try:
+                plan = json.load(sys.stdin)
+            except json.JSONDecodeError as exc:
+                raise SpinoffArgError(f"plan on stdin is not valid JSON: {exc}") from None
+            if ns.brief_file:
+                plan["brief"] = Path(ns.brief_file).read_text()
+            result = build_commands(plan)
+    except SpinoffArgError as exc:
+        print(f"spinoff-plan: {exc}", file=sys.stderr)
+        return 2
+    json.dump(result, sys.stdout, indent=2)
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

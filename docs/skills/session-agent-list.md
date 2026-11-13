@@ -1,6 +1,6 @@
 # session-agent-list
 
-The finder of the session quintet: discovers Claude Code, Codex, Muse, and
+The finder of the session sextet: discovers Claude Code, Codex, Muse, and
 OpenCode sessions across the machine and renders them as action-ready cards
 in a converged 22-element format — ephemeral ordinals (`[1]`, stable within the
 conversation), end-state triage on its own line (`●` open mid-work / `⇥`

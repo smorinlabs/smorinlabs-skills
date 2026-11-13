@@ -2414,3 +2414,32 @@ smorinlabs/harness-kit#31.
 - [x] [P65-T01] Pin harness-kit `v0.4.0`, set `display_name`, run `just gen`, commit the generated manifest
 - [x] [P65-T02] README and `docs/skills/*` Codex install instructions use the two commands; local clone kept as the development path
 - [x] [P65-T03] Release per the repo's flow (`release/next` → PR → merge commit → tag the merge commit) (#101; released in v0.32.3)
+
+## [x] Project P66: session-spinoff — launch a side idea in a fresh agent in a Rex tab (session 0.13.1 → 0.14.0)
+
+**Purpose:** An idea that comes up mid-session (a bug, feature, or fix, often in
+another repo) should not derail the current session or fill its context. The new
+`session-spinoff` skill writes a self-contained brief for that idea, finds the
+target repo, creates a worktree from `origin/<default-branch>`, asks where to put
+it (Rex sessions ranked by fit, or a new session with a confirmed name) and which
+agent to run (claude, codex, or muse; the current agent is the default), launches
+the agent in a Rex tab with the brief as its first prompt, and prints the command
+that jumps to the new tab.
+
+**Arguments:** `[idea] [--new | --session <label|id>] [--name <session-name>]
+[--repo <name|path>] [--claude | --codex | --muse] [--dry-run]`. Each flag
+answers one question in advance; `--name` implies `--new`.
+
+**Out of Scope:** `--branch`, `--focus`, `--base` (deferred); editing
+`agent-fork` (accepted adjacent, separate repo).
+
+- [x] [P66-TS01] Test: the argument gate accepts every valid combination and refuses `--new`+`--session`, `--name`+`--session`, two agent flags, and unknown flags
+- [x] [P66-TS02] Test: `classify_sessions` puts sessions with a tab in the target repo (or its worktrees) in tier 1, most repo tabs first, keeps Rex order in tier 2, and drops none; label relevance is ordered by the agent within a tier (decided 2026-11-13: facts in the helper, meaning in the model)
+- [x] [P66-TS03] Test: command builder emits the worktree, `rex new` / `rex window new`, and `session.select` jump commands; `--dry-run` writes nothing
+- [x] [P66-T01] `scripts/spinoff-plan` helper (stdlib, `uv run --script`)
+- [x] [P66-T02] `SKILL.md` for `session-spinoff`
+- [x] [P66-T03] Re-carve `session-handoff` description: not for launching a spun-off idea (`session-spinoff`)
+- [x] [P66-T04] Plugin metadata (description, keywords, version 0.14.0), `just gen`, docs page, README row (release notes are written by the release run)
+- [x] [P66-T05] Dev placement on both tools, `skill-quality` gate against the worktree, `just all`
+- [x] [P66-TS04] Gate: skill-quality layers 1–4 pass on the worktree (static and deep, both tools); skill-reviewer findings 1–9 fixed with regression tests
+- [x] [P66-TS05] Headless dry-run smoke test (fresh `claude -p`): first run found idea text containing `--version` refused as a flag (fixed: unknown `--word` after idea text starts is idea text; bare `--` ends flags); rerun passed with no side effects

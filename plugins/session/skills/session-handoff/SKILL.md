@@ -2,7 +2,7 @@
 name: session-handoff
 allowed-tools: Bash, Read, Glob, Grep, Write, AskUserQuestion
 argument-hint: "[--file|--inline]"
-description: Package the current session into a self-contained handoff that a fresh session, possibly on another machine, can act on cold. Use when the user says "hand this off", "write a handoff", or wants to continue this work in a new session or on another machine. Not for recapping the current session (session-recap).
+description: Package the current session into a self-contained handoff that a fresh session, possibly on another machine, can act on cold. Use when the user says "hand this off", "write a handoff", or wants to continue this work in a new session or on another machine. Not for recapping the current session (session-recap) or launching a side idea in a new Rex tab (session-spinoff).
 ---
 
 # session-handoff
