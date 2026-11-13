@@ -30,7 +30,8 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add factor-harness@smorinlabs-skills
 ```
 
-For development, link the cloned skill into `~/.agents/skills` (Codex's current
+For development, link the cloned skill and each sibling skill in
+`plugins/factor-harness/skills/` into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

@@ -23,6 +23,9 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add repo-hygiene@smorinlabs-skills
 ```
 
+These need a Codex CLI with the `codex plugin` commands; they were tested with
+codex-cli 0.167.2. Upgrade Codex if `codex plugin add` is not recognized.
+
 **Develop it** — clone the repo and symlink a skill straight into your local
 skills directory to iterate on it:
 
