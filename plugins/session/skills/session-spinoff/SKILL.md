@@ -74,9 +74,13 @@ ask which. Derive:
 `--repo` given → resolve it to a local checkout and confirm it exists.
 Otherwise infer the repo from the idea and resolve it with the `repo-finder`
 skill. If inference is weak, ask; never pick between two candidates silently.
-Record the checkout path (absolute) and the default branch
-(`git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD`; it prints
-`origin/main`, and the helper strips the `origin/` prefix).
+Record the checkout path (absolute) and the remote's current default branch:
+`git -C <repo> ls-remote --symref origin HEAD` prints
+`ref: refs/heads/<branch>	HEAD`. Ask the remote, because the local
+`origin/HEAD` is not updated when the default branch is renamed. Only if the
+remote is unreachable, fall back to
+`git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD` and say so; it
+prints `origin/main`, and the helper strips the `origin/` prefix.
 
 ### 4. Write the brief
 
@@ -176,14 +180,18 @@ Always pass the resolved `session_id` on, never the label.
 ### 7. Build the commands
 
 Write the brief to a temporary file with a quoted heredoc, so quotes, braces,
-and newlines in quoted evidence pass through untouched. Then pipe the plan,
-which now holds only simple values, to the helper:
+and newlines in quoted evidence pass through untouched. **The delimiter must
+not occur as a line in the brief**: a line equal to it ends the heredoc, and
+every line after it runs as a shell command. Use a fresh delimiter each run,
+`SPINOFF_BRIEF_` plus 8 random hex characters, and check that the finished
+brief contains no line equal to it. Then pipe the plan, which now holds only
+simple values, to the helper:
 
 ```bash
 BRIEF="$(mktemp -t spinoff-brief)"
-cat > "$BRIEF" <<'SPINOFF_BRIEF'
+cat > "$BRIEF" <<'SPINOFF_BRIEF_<8 random hex>'
 <brief text>
-SPINOFF_BRIEF
+SPINOFF_BRIEF_<8 random hex>
 uv run --script "$PLAN" commands --brief-file "$BRIEF" <<'JSON'
 {"repo": "<absolute checkout>", "default_branch": "<branch>",
  "branch": "<type>/<topic>", "worktree": "<path>",
@@ -211,7 +219,8 @@ first-prompt argument. Remove the file after launch.
 
 1. Run `worktree`, then `worktree_add`. A failure stops here; nothing in Rex
    was touched.
-2. Run `launch`. Save `session_id` (new session) and `window_id` / `block_ids`
+2. Run `launch`. Adding a tab to an existing session does not move the
+   user's focus (`--focus=false`); the jump in step 9 does that. Save `session_id` (new session) and `window_id` / `block_ids`
    from its JSON. If it times out, inspect with `rex ls` / `rex window ls`
    before retrying; the tab may already exist.
 3. Check that the agent started in the right directory:
@@ -256,6 +265,7 @@ Return to session A's work.
 | "Branch from local main, it's right here" | Local `main` may be stale. Always `origin/<default-branch>`. |
 | "Commit session A's changes so the new agent sees them" | Session A is never modified. State the dependency in the brief instead. |
 | "The tab opened, so it's in the right place" | Run `verify-launch`. A tab can open in the wrong directory and the agent works on the wrong tree. |
+| "A fixed heredoc delimiter is fine, it's quoted" | Quoting stops expansion, not collisions. A brief line equal to the delimiter turns the rest of the brief into shell commands. Random delimiter, checked. |
 | "The launch timed out, run it again" | It may have succeeded. Inspect first, or you get two tabs and two agents. |
 | "Turn on Remote Control so the jump works" | That is the user's setting. Print the command. |
 

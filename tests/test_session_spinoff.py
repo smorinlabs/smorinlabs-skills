@@ -125,7 +125,10 @@ def test_classify_repo_match_is_tier_1():
 def test_classify_more_repo_tabs_first_within_tier_1():
     sessions = [
         session("s1", "a", [tab("/x", TARGET)]),
-        session("s2", "b", [tab("/x", TARGET), tab("/y", TARGET)]),
+        {"session_id": "s2", "label": "b", "windows": [
+            {"window_id": "w1", "tabs": [tab("/x", TARGET)]},
+            {"window_id": "w2", "tabs": [tab("/y", TARGET)]},
+        ]},
     ]
     out = sp.classify_sessions(sessions, TARGET)
     assert [s["session_id"] for s in out] == ["s2", "s1"]
@@ -373,3 +376,29 @@ def test_label_fact_never_sets_the_tier():
     out = sp.classify_sessions([session("s1", "review-shelf-p27", [])], TARGET)
     assert out[0]["tier"] == 2
     assert "label names this repo" in out[0]["facts"]
+
+
+# ── PR #103 review (CodeRabbit) ──────────────────────────────────────────
+
+
+def test_repo_tabs_counts_windows_not_panes():
+    s = {"session_id": "s1", "label": "x", "windows": [
+        {"window_id": "w1", "tabs": [tab("/code/shelf", TARGET)] * 4},   # one tab split into 4 panes
+        {"window_id": "w2", "tabs": [tab("/code/shelf", TARGET)]},
+    ]}
+    out = sp.classify_sessions([s], TARGET)
+    assert out[0]["repo_tabs"] == 2
+    assert "2 tabs in this repo" in out[0]["facts"]
+
+
+def test_existing_session_launch_keeps_focus():
+    plan = {**BASE_PLAN, "placement": "session", "session": "session:xyz"}
+    assert "--focus=false" in sp.build_commands(plan)["launch"]
+
+
+def test_snapshot_refuses_when_rex_listing_fails(monkeypatch):
+    monkeypatch.setattr(sp, "git_common_dir", lambda path: TARGET)
+    monkeypatch.setattr(sp, "_run_json", lambda argv: None)
+    with pytest.raises(sp.SpinoffArgError) as exc:
+        sp.snapshot("/code/shelf")
+    assert "rex ls" in str(exc.value)

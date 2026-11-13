@@ -161,7 +161,8 @@ def classify_sessions(sessions: list[dict], target_common_dir: str) -> list[dict
     out = []
     for index, s in enumerate(sessions):
         tabs = [tab for w in s.get("windows", []) for tab in w.get("tabs", [])]
-        repo_tabs = sum(1 for tab in tabs if tab.get("repo_dir") == target_common_dir)
+        repo_tabs = sum(1 for w in s.get("windows", [])  # a Rex tab is a window; count it once
+                        if any(tab.get("repo_dir") == target_common_dir for tab in w.get("tabs", [])))
         hits = sum((tab.get("touched") or {}).get(target_common_dir, 0) for tab in tabs)
         agents = sorted({tab["agent"] for tab in tabs if tab.get("agent")})
         dirs = list(dict.fromkeys(tab["cwd"] for tab in tabs if tab.get("cwd")))
@@ -236,7 +237,7 @@ def build_commands(plan: dict) -> dict:
                   "-c", launch_dir, "--json", "--", *agent_argv]
     else:
         launch = ["rex", "window", "new", "-s", plan["session"], plan["tab_label"],
-                  "-c", launch_dir, "--json", "--", *agent_argv]
+                  "-c", launch_dir, "--focus=false", "--json", "--", *agent_argv]
     cmds = {
         "worktree": ["git", "-C", repo, "fetch", "origin"],
         "worktree_add": ["git", "-C", repo, "worktree", "add", "-b", plan["branch"], wt,
@@ -335,7 +336,9 @@ def snapshot(repo: str) -> dict:
     target = git_common_dir(repo)
     if target is None:
         raise SpinoffArgError(f"{repo} is not inside a git repository")
-    listing = _run_json(["rex", "ls", "--json"]) or {"sessions": []}
+    listing = _run_json(["rex", "ls", "--json"])
+    if listing is None:
+        raise SpinoffArgError("rex ls failed; check the connection with `rex whoami --json`")
     transcripts, evidence = _live_transcripts()
     roots = _RepoRoots()
     sessions = []
