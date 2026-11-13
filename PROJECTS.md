@@ -2475,7 +2475,7 @@ session 0.13.1 → 0.14.0. P67 rebases onto P66 after it merges and bumps the ve
 - [x] [P67-TS02] Recap and loose-ends declare and cite `references/_shared/close-verdict.md`; vendored copies match the source; `session-status` does not cite it
 - [x] [P67-TS03] Additive guard: recap's existing `🏁 Close` rule and loose-ends' close-out table text are unchanged
 - [x] [P67-TS04] Standalone install: copying only a skill directory resolves every `references/` citation
-- [ ] [P67-TS05] Manual: a per-skill installer installs `session-recap` alone (scratch project) places `references/_shared/close-verdict.md`
+- [x] [P67-TS05] Manual: a per-skill installer installs `session-recap` alone (scratch project) places `references/_shared/close-verdict.md` (verified 2026-11-13 for both skills from a local `file://` URL in a scratch project; files byte-identical)
 - [x] [P67-T01] Write `plugins/session/references/close-verdict.md`
 - [x] [P67-T02] Add the close-out section to `session-recap` after `🏁 Close`
 - [x] [P67-T03] Add the close-out section to `session-loose-ends` after its close-out table
