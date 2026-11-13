@@ -116,7 +116,7 @@ wheels = [
 
 [[package]]
 name = "smorinlabs-skills"
-version = "0.32.2"
+version = "0.32.3"
 source = { virtual = "." }
 
 [package.dev-dependencies]
