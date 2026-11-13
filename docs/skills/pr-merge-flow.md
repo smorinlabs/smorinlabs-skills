@@ -153,9 +153,14 @@ executes, and the report does not claim clean completion.
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/repo-hygiene/skills/pr-merge-flow" ~/.claude/skills/pr-merge-flow` and `ln -s "$(pwd)/smorinlabs-skills/plugins/repo-hygiene/skills/ci-fix" ~/.claude/skills/ci-fix` |
 | Direct copy | No marketplace access | copy both `plugins/repo-hygiene/skills/pr-merge-flow/` and `plugins/repo-hygiene/skills/ci-fix/` into `~/.claude/skills/`; keep them as siblings for the shared validation references |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add repo-hygiene@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

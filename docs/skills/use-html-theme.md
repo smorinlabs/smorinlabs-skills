@@ -45,5 +45,11 @@ behaves identically on Claude Code and Codex:
 All three modes install the same **skill** — the plugin is skills-only (no
 slash commands), so behavior is identical across install modes and tools.
 
-**Codex:** register the marketplace in `~/.codex/config.toml`. The skill loads
-and behaves identically on Codex and Claude Code.
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add use-html-theme@smorinlabs-skills
+```
+
+The skill loads and behaves identically on Codex and Claude Code.

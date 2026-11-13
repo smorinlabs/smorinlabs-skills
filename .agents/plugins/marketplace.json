@@ -1,0 +1,200 @@
+{
+  "name": "smorinlabs-skills",
+  "interface": {
+    "displayName": "smorinlabs skills"
+  },
+  "plugins": [
+    {
+      "name": "clear-decision-communication",
+      "source": {
+        "source": "local",
+        "path": "./plugins/clear-decision-communication"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "clear-technical-communication",
+      "source": {
+        "source": "local",
+        "path": "./plugins/clear-technical-communication"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "design-by-elements",
+      "source": {
+        "source": "local",
+        "path": "./plugins/design-by-elements"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "document-merge",
+      "source": {
+        "source": "local",
+        "path": "./plugins/document-merge"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "explain",
+      "source": {
+        "source": "local",
+        "path": "./plugins/explain"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "factor-harness",
+      "source": {
+        "source": "local",
+        "path": "./plugins/factor-harness"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "fusion-runner",
+      "source": {
+        "source": "local",
+        "path": "./plugins/fusion-runner"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "guided-research",
+      "source": {
+        "source": "local",
+        "path": "./plugins/guided-research"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "muse-github",
+      "source": {
+        "source": "local",
+        "path": "./plugins/muse-github"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "project-harness",
+      "source": {
+        "source": "local",
+        "path": "./plugins/project-harness"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "question-walkthrough",
+      "source": {
+        "source": "local",
+        "path": "./plugins/question-walkthrough"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "reader-steps",
+      "source": {
+        "source": "local",
+        "path": "./plugins/reader-steps"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "repo-finder",
+      "source": {
+        "source": "local",
+        "path": "./plugins/repo-finder"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "repo-hygiene",
+      "source": {
+        "source": "local",
+        "path": "./plugins/repo-hygiene"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "session",
+      "source": {
+        "source": "local",
+        "path": "./plugins/session"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "use-html-theme",
+      "source": {
+        "source": "local",
+        "path": "./plugins/use-html-theme"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

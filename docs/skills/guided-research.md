@@ -28,10 +28,15 @@ research · **Arguments:** none
 | Dev symlink | Tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/guided-research/skills/guided-research" ~/.claude/skills/guided-research` |
 | Direct copy | No marketplace access | copy `plugins/guided-research/skills/guided-research/` into `~/.claude/skills/` |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`, source_type local) and enable the
-plugin — or dev-symlink into `~/.agents/skills` (Codex's current skills
-location) as well.
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add guided-research@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
+skills location).
 
 ## Example session
 
