@@ -2483,7 +2483,7 @@ session 0.13.1 → 0.14.0. P67 rebases onto P66 after it merges and bumps the ve
 - [x] [P67-T04] `just gen`; update `docs/skills/session-recap.md` and `docs/skills/session-loose-ends.md`
 - [x] [P67-T05] After P66 merged: rebased, bumped session 0.14.0 → 0.15.0, merged as #104; ships in the next `release/next` release
 
-## [~] Project P68: session-status ends with a context-only close verdict (session 0.15.0 → 0.16.0)
+## [x] Project P68: session-status ends with a context-only close verdict (session 0.15.0 → 0.16.0)
 
 **Purpose:** `session-status` ends its ledger with the same close-or-continue verdict as
 `session-recap` and `session-loose-ends` (P67), built only from what it already reads — the
@@ -2505,4 +2505,4 @@ plan of record and the conversation — and labeled as such.
 - [x] [P68-T01] Add the compact-form subsection to `plugins/session/references/close-verdict.md`
 - [x] [P68-T02] `session-status`: amend the Contract rule and See also; add *The verdict* section and a Red Flags row
 - [x] [P68-T03] `just gen`; update `docs/skills/session-status.md`
-- [ ] [P68-T04] Bump session 0.15.0 → 0.16.0, quality check, PR, merge
+- [x] [P68-T04] Bump session 0.15.0 → 0.16.0, quality check, PR, merge (#106; ships in the next `release/next` release)
