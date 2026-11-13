@@ -149,7 +149,7 @@ always-on digest users keep in their global instructions.
 
 ### session
 
-Session-state quintet — orient, sweep, hand off, glance, and find.
+Session-state sextet — orient, sweep, hand off, glance, find, and spin off.
 
 | Skill | Does | Details |
 |---|---|---|
@@ -158,6 +158,7 @@ Session-state quintet — orient, sweep, hand off, glance, and find.
 | `session-handoff` | Packages the current session into a self-contained handoff a fresh, zero-context session — often on another machine — can act on cold: the outcome, repo identity and paths, resume state, and the tacit context that dies on compaction. | [docs/skills/session-handoff.md](docs/skills/session-handoff.md) |
 | `session-status` | The mid-flight glance — a manually triggered, plain-language progress map of the active stream, with finished work rolled up and remaining work fine-grained where you stand; adds an ASCII kanban board of what's left when work runs in parallel or much remains. Probe-free and read-only. | [docs/skills/session-status.md](docs/skills/session-status.md) |
 | `session-agent-list` | Finds and lists Claude Code, Codex, Muse, and OpenCode sessions across the machine as action-ready cards: end-state triage (open / handed off / closed clean / loose ends), each tool's session name, what is running now, lineage, and copy-paste resume or transcript commands. Filters by tool and by running sessions. | [docs/skills/session-agent-list.md](docs/skills/session-agent-list.md) |
+| `session-spinoff` | Takes a side idea out of the current session and launches it in a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree from origin, with a self-contained brief as its first prompt. Ranks existing Rex sessions by whether they already work in that repo, asks where to put it and which agent to run, and prints the command that jumps to the new tab. | [docs/skills/session-spinoff.md](docs/skills/session-spinoff.md) |
 
 ### clear-technical-communication
 
