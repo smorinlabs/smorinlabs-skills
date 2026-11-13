@@ -66,6 +66,15 @@ List each small item once, with one recommended disposition:
 Then ask: **"Main work is done. Want me to close out these N items?"** Once each
 item is done, dropped, or captured, the verdict becomes ✅.
 
+A read-only skill (`session-recap`) recommends and hands off, never executes:
+its offer is a `/session-loose-ends` launch naming the item IDs. Only an acting
+skill (`session-loose-ends`) carries out the dispositions, item by item, with
+the user's confirmation.
+
+A prompt handed to the user (a paste-ready `▶ Prompt`) is not a durable
+capture. An item whose only home is such a prompt still counts as open, so the
+verdict stays 🟡.
+
 ### Shape
 
 ```
