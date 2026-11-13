@@ -2446,7 +2446,7 @@ answers one question in advance; `--name` implies `--new`.
 - [x] [P66-TS07] Test: transcript evidence — paths in a live agent's recent transcript are counted per repo (worktrees collapse via the git common dir); at least 3 hits puts a parent-started tab in tier 1; "label names this repo" is a fact that never sets the tier. Live: tier-1 matches went from 0 to the expected session for smorinlabs-skills, shelf, and lost-sessions, about 3 s per snapshot (requested 2026-11-13 after 12 of 30 tabs were found to start in `~/c` or `~`)
 - [x] [P66-TS05] Headless dry-run smoke test (fresh `claude -p`): first run found idea text containing `--version` refused as a flag (fixed: unknown `--word` after idea text starts is idea text; bare `--` ends flags); rerun passed with no side effects
 
-## [~] Project P67: Session close-out verdict for session-recap and session-loose-ends (session 0.14.0 → 0.15.0)
+## [x] Project P67: Session close-out verdict for session-recap and session-loose-ends (session 0.14.0 → 0.15.0)
 
 **Purpose:** End `session-recap` and `session-loose-ends` with a clear answer to "is this
 session's work done, and should I close it?" — split into the main work versus small items,
@@ -2480,4 +2480,4 @@ session 0.13.1 → 0.14.0. P67 rebases onto P66 after it merges and bumps the ve
 - [x] [P67-T02] Add the close-out section to `session-recap` after `🏁 Close`
 - [x] [P67-T03] Add the close-out section to `session-loose-ends` after its close-out table
 - [x] [P67-T04] `just gen`; update `docs/skills/session-recap.md` and `docs/skills/session-loose-ends.md`
-- [ ] [P67-T05] After P66 merges: rebase, bump session version, release per the repo's flow
+- [x] [P67-T05] After P66 merged: rebased, bumped session 0.14.0 → 0.15.0, merged as #104; ships in the next `release/next` release
