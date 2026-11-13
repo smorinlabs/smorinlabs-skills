@@ -28,9 +28,14 @@ asked up front.
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/document-merge/skills/document-merge" ~/.claude/skills/document-merge` |
 | Direct copy | No marketplace access | copy `plugins/document-merge/skills/document-merge/` into `~/.claude/skills/` |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add document-merge@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

@@ -43,9 +43,14 @@ free-text outcome hint seeds scoping.
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-handoff" ~/.claude/skills/session-handoff` |
 | Direct copy | No marketplace access | copy **both** `plugins/session/skills/session-handoff/` and `plugins/session/skills/session-recap/` into `~/.claude/skills/` — the handoff reuses the recap skill's `transcript_digest.py`, so copying it alone leaves the digest missing |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add session@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

@@ -1,7 +1,8 @@
 # smorinlabs-skills
 
 The public cross-platform plugin marketplace for **smorinlabs** — publishing a
-Claude Code marketplace and an OpenAI Codex marketplace from one tree. Sixteen
+Claude Code marketplace (`.claude-plugin/marketplace.json`) and an OpenAI Codex
+marketplace (`.agents/plugins/marketplace.json`) from one tree. Sixteen
 plugins, thirty-five skills. Plugin metadata lives in a single source of truth
 (`plugin.meta.toml` per plugin); the per-platform manifests are generated, so
 they can't drift.
@@ -15,13 +16,11 @@ they can't drift.
 /plugin install repo-hygiene@smorinlabs-skills
 ```
 
-Codex: register a local marketplace source in `~/.codex/config.toml`, then enable
-the plugin:
+Codex: add the marketplace from a terminal, then install a plugin:
 
-```toml
-[marketplaces.smorinlabs-skills]
-source_type = "local"
-source = "/absolute/path/to/smorinlabs-skills"
+```
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add repo-hygiene@smorinlabs-skills
 ```
 
 **Develop it** — clone the repo and symlink a skill straight into your local
@@ -33,7 +32,8 @@ ln -s "$(pwd)/smorinlabs-skills/plugins/<plugin>/skills/<skill>" ~/.claude/skill
 ```
 
 Codex users: dev-symlink the same skill into `~/.agents/skills` (Codex's current
-skills location) as well.
+skills location) as well. To test the whole marketplace from your clone instead of
+GitHub, add it by path: `codex plugin marketplace add ./smorinlabs-skills`.
 
 ### muse-github
 
