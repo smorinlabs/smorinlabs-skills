@@ -19,6 +19,12 @@ critical path, and a reader-steps block. Output scales by zoom tier — a tiny
 session collapses to a few lines; a multi-day one coarsens to milestones
 (done work rolls up; blocked and remaining stay fine-grained).
 
+It ends with a 🚪 close-out for this session only: main work versus small
+items in three buckets (done · needs a decision · not done), and a verdict
+that leans toward closing — ✅ close this session, 🟡 main work done (close out
+N small items?), or 🔵 continue. It is added after the existing `🏁 Close`
+verdict, which is unchanged.
+
 **Triggers on:** "catch me up", "where was I", "where are we", "recap this
 session", "what's the state of this", "what was I doing", "get me up to
 speed", "did I finish", or returning to a repo after time away and seeming
