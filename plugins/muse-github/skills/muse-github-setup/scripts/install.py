@@ -75,7 +75,7 @@ def owners_change(root: Path, codeowner: str) -> dict[str, str]:
     name = existing[0] if existing else OWNERS_FILES[0]
     current = destination(root, name).read_text() if existing else ""
     block = "\n".join([OWNERS_MARKER, "# CODEOWNERS is not enforcement on its own; branch rules must require review.",
-                       *(f"{path} {codeowner}" for path in OWNED_PATHS)]) + "\n"
+                       *(f"{path} {codeowner}" for path in (*OWNED_PATHS, "/" + name))]) + "\n"
     if OWNERS_MARKER in current:
         if current.count(OWNERS_MARKER) > 1 or block not in current:
             raise Conflict(f"Existing Muse block in {name} differs; reconcile its owners explicitly")

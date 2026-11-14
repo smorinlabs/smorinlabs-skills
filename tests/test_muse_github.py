@@ -157,10 +157,14 @@ OWNERS_BLOCK = (
 )
 
 
+def owners_block(location=".github/CODEOWNERS"):
+    return OWNERS_BLOCK + f"/{location} @fixture-org/maintainers\n"
+
+
 def test_codeowners_is_created_only_with_an_explicit_owner(tmp_path):
     assert ".github/CODEOWNERS" not in installer.plan(tmp_path, "fixture-org")
     changes = installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
-    assert changes[".github/CODEOWNERS"] == OWNERS_BLOCK
+    assert changes[".github/CODEOWNERS"] == owners_block()
     installer.apply(tmp_path, changes)
     assert installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers") == {}
 
@@ -173,21 +177,22 @@ def test_codeowners_appends_to_the_existing_file_without_shadowing_it(tmp_path, 
     target.write_text(existing)
     changes = installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
     assert set(changes) & {".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} == {location}
-    assert changes[location] == existing + "\n" + OWNERS_BLOCK
+    assert changes[location] == existing + "\n" + owners_block(location)
     installer.apply(tmp_path, changes)
     assert installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers") == {}
 
 
 def test_codeowners_hand_written_block_is_recognized(tmp_path):
     (tmp_path / ".github").mkdir()
-    (tmp_path / ".github/CODEOWNERS").write_text("* @fixture-user\n\n" + OWNERS_BLOCK)
+    (tmp_path / ".github/CODEOWNERS").write_text("* @fixture-user\n\n" + owners_block())
     assert ".github/CODEOWNERS" not in installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
 
 
 @pytest.mark.parametrize("body", [
-    OWNERS_BLOCK.replace("@fixture-org/maintainers", "@fixture-user"),
-    OWNERS_BLOCK.replace("/AGENTS.md @fixture-org/maintainers\n", ""),
-    OWNERS_BLOCK + "\n" + OWNERS_BLOCK.replace("@fixture-org/maintainers", "@fixture-user"),
+    owners_block().replace("@fixture-org/maintainers", "@fixture-user"),
+    owners_block().replace("/AGENTS.md @fixture-org/maintainers\n", ""),
+    owners_block() + "\n" + owners_block().replace("@fixture-org/maintainers", "@fixture-user"),
+    OWNERS_BLOCK,  # The earlier 7-line block, with no line owning CODEOWNERS itself.
 ])
 def test_codeowners_conflicting_block_is_not_overwritten(tmp_path, body):
     (tmp_path / ".github").mkdir()

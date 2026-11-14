@@ -17,7 +17,8 @@
    Preserve existing project instructions, OpenCode settings, CODEOWNERS entries,
    and unrelated changes. `--codeowner` adds human ownership for
    `.github/workflows/opencode-*.yml`, `.github/scripts/muse_ci.py`,
-   `.opencode/muse-ci/`, `opencode.json`, and `AGENTS.md`; confirm the block
+   `.opencode/muse-ci/`, `opencode.json`, `AGENTS.md`, and the CODEOWNERS file
+   itself; confirm the block
    landed in the CODEOWNERS file GitHub reads. CODEOWNERS alone is not enforcement; confirm
    branch rules require those reviews and protect the default branch from the bot.
    Read the rules that actually apply with `gh api repos/OWNER/REPO/rules/branches/BRANCH`:

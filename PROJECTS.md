@@ -2566,10 +2566,10 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - Personal-account repository support; splitting `MUSE_CI_ENABLED` per workflow.
 
 ### Tests & Tasks
-- [x] [P71-TS01] `--codeowner` creates `.github/CODEOWNERS`, appends to the existing file GitHub reads (`.github/`, root, `docs/`) without shadowing it, is idempotent, recognizes the hand-written block, and refuses a conflicting block, several CODEOWNERS files, or a malformed owner
+- [x] [P71-TS01] `--codeowner` creates `.github/CODEOWNERS`, appends to the existing file GitHub reads (`.github/`, root, `docs/`) without shadowing it, also owns that CODEOWNERS file, is idempotent, and refuses a conflicting or duplicate block, several CODEOWNERS files, or a malformed owner
 - [x] [P71-TS02] The prepared CI `config.json` pins `apiKey` to exactly `{env:META_MUSE_CI_API_KEY}`
 - [x] [P71-T01] `install.py` requires `--codeowner` or `--no-codeowner` (owner decision 2026-11-13, Q1.A)
 - [x] [P71-T02] Rename the helper's `SECRET` constant to `PROVIDER_ENV`. The lost-sessions SARIF traced all four flow paths to that assignment (CodeQL's sensitive-name heuristic). Not proven with CodeQL locally; the next CodeQL run on a re-rendered target confirms it
 - [x] [P71-T03] SKILL.md step 4 and acceptance steps 1–2: hook dependencies first (G14), exclude the vendored helper from lint/format hooks (G11), `--codeowner` (G12)
 - [ ] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval
-- [ ] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
+- [ ] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
