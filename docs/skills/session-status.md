@@ -1,6 +1,6 @@
 # session-status
 
-The mid-flight glance of the session quintet: a fast, plain-language
+The mid-flight glance of the session sextet: a fast, plain-language
 "you are here" map of the ACTIVE stream of work — what it is, what's done,
 what's in progress, and what's left — rendered as a ledger (`The work` /
 `Done` / `Now` / `Left` label column, counts footer) at the zoom level the
@@ -17,8 +17,10 @@ stays fine-grained, but only where you're standing. Read-only *and*
 probe-free — status comes from the plan of record (PROJECTS.md, projects/,
 task lists, plan docs) plus the conversation; it never runs tests or probes
 git/PR/CI, which is what keeps it a glance instead of a recap. No owed-item
-tables, no launch prompts, no verdict — that machinery belongs to
-`session-recap`.
+tables and no launch prompts. It ends with one compact close-or-continue
+verdict built only from that context, labeled as such; each leftover small
+item is shown as what it is, why it matters, and a recommended answer. The
+verdict checked against live state belongs to `session-recap`.
 
 When the work calls for it, the ledger carries an **ASCII kanban board** of
 what's left. The skill decides each run: it draws one when two or more
@@ -45,9 +47,14 @@ ambiently: "where was I" / "catch me up" / a cold return is
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-status" ~/.claude/skills/session-status` |
 | Direct copy | No marketplace access | copy `plugins/session/skills/session-status/` into `~/.claude/skills/` |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add session@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

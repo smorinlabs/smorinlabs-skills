@@ -1,5 +1,44 @@
 # Release Notes
 
+## v0.33.0 — 2026-11-13
+
+### Added
+
+- `session` 0.13.1 -> 0.14.0: new skill `session-spinoff`. It takes an idea
+  that comes up mid-session (a bug, feature, or fix, often in another repo)
+  and launches it in a fresh Claude Code, Codex, or Muse agent in a Rex tab,
+  on a new worktree from `origin/<default-branch>`, with a self-contained brief
+  as the agent's first prompt. Placement is asked every time: Rex sessions are
+  tiered by facts (a tab started in the target repo, or an agent whose recent
+  transcript shows work there) and ordered within a tier by label relevance.
+  The skill confirms the launch directory, verifies after launch that the
+  agent runs there, and prints the command that jumps to the new tab. The
+  bundled `scripts/spinoff-plan` helper gates the flags, takes a read-only Rex
+  snapshot, and builds the commands (`--dry-run`) (#103).
+
+### Changed
+
+- `session-handoff`: its description now excludes launching a side idea in a
+  new Rex tab, which `session-spinoff` covers (#103).
+
+## v0.32.3 — 2026-11-12
+
+### Added
+
+- Native Codex marketplace at `.agents/plugins/marketplace.json`, generated
+  by harness-kit v0.4.0 (pinned from v0.3.1). It lists all 16 plugins with
+  install policy `AVAILABLE` / `ON_INSTALL` and category `Developer Tools`,
+  under the title "smorinlabs skills". Before this, Codex read
+  `.claude-plugin/marketplace.json` as a compatibility fallback (#101).
+
+### Fixed
+
+- Codex install docs: `README.md` and `docs/skills/*` now give
+  `codex plugin marketplace add smorinlabs/smorinlabs-skills` and
+  `codex plugin add <plugin>@smorinlabs-skills` (tested with codex-cli
+  0.167.2) instead of registering a local clone in `~/.codex/config.toml`.
+  The local clone stays as the development path (#101).
+
 ## v0.32.2 — 2026-11-11
 
 ### Fixed

@@ -129,5 +129,11 @@ context in front of you decides.
 | Dev symlink | Tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/use-html-theme/skills/html-codesign" ~/.claude/skills/html-codesign` |
 | Direct copy | No marketplace access | copy just `skills/html-codesign/` — its shared references travel with it as vendored copies at `references/_shared/`. The one thing that doesn't survive a lone copy: sibling-skill theme paths (`../use-html-theme/...`) |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`. Pure skill —
-behavior is identical on Codex and Claude Code.
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add use-html-theme@smorinlabs-skills
+```
+
+Pure skill — behavior is identical on Codex and Claude Code.

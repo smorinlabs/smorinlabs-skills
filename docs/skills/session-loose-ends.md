@@ -24,6 +24,13 @@ by the record, not by merit: no quotable assent means it's a suggestion. IDs
 (`C1`, `W2`, `D1`, `S3`) double as reply shorthand — `C1 C2 yes, W1 skip` —
 and the close-out table accounts for every one of them.
 
+After the close-out table comes a 🚪 session close-out for this session only:
+done · needs a decision · not done, and a verdict that leans toward closing —
+✅ close this session, 🟡 main work done (each leftover is shown as what it
+is, why it matters, and a recommended answer: do here, spin off to a new
+session, capture in `PROJECTS.md`, a commit, a GitHub issue, or Linear, or
+ignore), or 🔵 continue.
+
 **Triggers on:** "any loose ends?", "anything to clean up?", "what's dangling
 here?", "tie this off", returning to a thread wanting only the actionable
 state. Not "catch me up" (that's `session-recap`, which stays read-only).
@@ -37,9 +44,14 @@ state. Not "catch me up" (that's `session-recap`, which stays read-only).
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-loose-ends" ~/.claude/skills/session-loose-ends` |
 | Direct copy | No marketplace access | copy `plugins/session/skills/session-loose-ends/` into `~/.claude/skills/` |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add session@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session

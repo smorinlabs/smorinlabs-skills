@@ -19,6 +19,14 @@ critical path, and a reader-steps block. Output scales by zoom tier — a tiny
 session collapses to a few lines; a multi-day one coarsens to milestones
 (done work rolls up; blocked and remaining stay fine-grained).
 
+It ends with a 🚪 close-out for this session only: main work versus small
+items in three buckets (done · needs a decision · not done), and a verdict
+that leans toward closing — ✅ close this session, 🟡 main work done (close out
+N small items, each shown as what it is, why it matters, and a recommended
+answer: do here, spin off, capture, or ignore), or 🔵 continue. It is added
+after the existing `🏁 Close`
+verdict, which is unchanged.
+
 **Triggers on:** "catch me up", "where was I", "where are we", "recap this
 session", "what's the state of this", "what was I doing", "get me up to
 speed", "did I finish", or returning to a repo after time away and seeming
@@ -34,9 +42,14 @@ now the long zoom tier).
 | Dev symlink | You want to tweak/iterate | `git clone https://github.com/smorinlabs/smorinlabs-skills` then `ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-recap" ~/.claude/skills/session-recap` |
 | Direct copy | No marketplace access | copy `plugins/session/skills/session-recap/` into `~/.claude/skills/` |
 
-**Codex:** register the marketplace in `~/.codex/config.toml`
-(`[marketplaces.smorinlabs-skills]`) and enable the plugin — or use the
-dev-symlink path, also linking into `~/.agents/skills` (Codex's current
+**Codex:** install from a terminal:
+
+```sh
+codex plugin marketplace add smorinlabs/smorinlabs-skills
+codex plugin add session@smorinlabs-skills
+```
+
+For development, link the cloned skill into `~/.agents/skills` (Codex's current
 skills location).
 
 ## Example session
