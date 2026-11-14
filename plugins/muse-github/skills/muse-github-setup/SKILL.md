@@ -22,10 +22,17 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    workflows, OpenCode JSON/JSONC configuration, `AGENTS.md`, `.opencode/`,
    CODEOWNERS, branch rules, and execution policies. The templates require an
    organization-owned GitHub.com repository and GitHub-hosted Ubuntu runners.
-   Check the organization's approved team for execution policies. Do not treat
+   Check the organization's approved team for execution policies
+   (`gh api orgs/OWNER/teams`); when none exists, follow the no-team branch in
+   [acceptance](references/acceptance.md). Find existing consumers of
+   `MUSE_CI_ENABLED` and `META_MUSE_CI_API_KEY` (for example a blueprint
+   `audit-triage.yml`): setting the variable arms every workflow it gates, so
+   report that coupling before activation. Do not treat
    repository write access or `author_association` as proof of current membership.
-   Private memberships need a separately available GitHub organization
-   Members-read credential. Identify that prerequisite before enabling anything.
+   Private memberships need the organization's Members-read GitHub App, whose
+   token each workflow mints (see [secrets](references/secrets.md)); the
+   repository `GITHUB_TOKEN` cannot prove membership. Identify that
+   prerequisite before enabling anything.
    Inspect who can change workflow files on PR branches. If outside
    collaborators can write, require server-enforced file-path push restrictions
    with member-only bypass before activation. CODEOWNERS does not prevent a
@@ -39,7 +46,8 @@ Install organization-member PR feedback and optional manual fix PRs using the up
 3. **Set the model and credential contract.** The default model is
    `model_api/muse-spark-1.3-contributor` at `https://api.meta.ai/v1`, with the
    repository Actions secret `META_MUSE_CI_API_KEY`. The provider reads
-   `{env:META_MUSE_CI_API_KEY}`. Use a distinct Meta key for each target repository.
+   `{env:META_MUSE_CI_API_KEY}`. Use the Meta key scope the owner chose: one key
+   per GitHub owner, or one per repository.
    The contributor tier permits Meta to use submitted content for training;
    disclose that when choosing it for a repository. Honor an existing owner
    decision rather than asking again. A restriction against sharing private
@@ -87,7 +95,8 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    unrelated Actions policies or install a privileged GitHub App automatically.
 
 7. **Validate within the authorized scope.** Check rendered YAML with
-   `actionlint`, run `tests/test_muse_github.py` when developing from the source checkout,
+   `actionlint`, run `tests/test_muse_github.py` (at the smorinlabs-skills repo
+   root) when developing from the source checkout,
    and inspect the complete diff. Commit or open a PR when authorized; merge
    and activation follow the user's existing scope. With live testing
    authorized, enable the repository variable and run the acceptance matrix.

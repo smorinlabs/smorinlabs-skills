@@ -32,12 +32,20 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Mint organization membership-read token
+        id: members
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MUSE_CI_MEMBERS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MUSE_CI_MEMBERS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-members: read
       - name: Authorize members and prepare restricted fix profile
         id: prepare
         run: python3 .github/scripts/muse_ci.py prepare fix
         env:
           GH_TOKEN: ${{ github.token }}
-          MUSE_MEMBERS_TOKEN: ${{ secrets.MUSE_CI_GITHUB_MEMBERS_TOKEN }}
+          MUSE_MEMBERS_TOKEN: ${{ steps.members.outputs.token }}
           MUSE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
       - name: Check Meta credential is configured
         run: test -n "$META_MUSE_CI_API_KEY"

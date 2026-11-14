@@ -2536,3 +2536,18 @@ deletion-design fixes …", which never said which design, why it mattered, or w
 - [x] [P69-T02] Update `session-status`, `session-recap`, and `session-loose-ends` SKILL.md close-out text and their docs pages
 - [x] [P69-T03] `just gen`; bump session 0.16.0 → 0.17.0; `just all`; `skill-quality` on all three skills at the worktree path
 - [x] [P69-T04] PR, merge with owner approval (#107; ships in the next `release/next` release)
+
+## [~] Project P70: muse-github-setup fixes from the lost-sessions test run (muse-github v0.2.0 → v0.3.0)
+
+**Goal/Requirement**: Fold the T8 lost-sessions gotchas into the skill, and replace the
+`MUSE_CI_GITHUB_MEMBERS_TOKEN` PAT with a Members-read GitHub App whose token each
+workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen by owner.
+
+**Out of Scope**
+- Splitting `MUSE_CI_ENABLED` per workflow (G1 proposes it; not decided).
+
+### Tests & Tasks
+- [x] [P70-TS01] Both templates mint the members token from `MUSE_CI_MEMBERS_APP_*` via SHA-pinned `actions/create-github-app-token` with `permission-members: read`; App secrets appear only in the mint step
+- [x] [P70-T01] Template mint step; security, secrets, and acceptance docs; SKILL.md prerequisites
+- [x] [P70-T02] Gotcha-driven doc edits (no-team branch, policies API, single maintainer, test path, dry-run probe, key scope)
+- [ ] [P70-T03] Pass `just all` and skill-quality, open the PR, merge

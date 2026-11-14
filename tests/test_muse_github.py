@@ -382,3 +382,26 @@ def test_templates_have_separate_events_and_only_step_scoped_secrets():
         assert action["with"]["share"] == "false" and action["with"]["use_github_token"] == "true"
         assert "MUSE_MEMBERS_TOKEN" not in action["env"]
         assert len(action["uses"].rsplit("@", 1)[1]) == 40
+
+
+def test_membership_token_is_minted_from_a_members_read_app():
+    for name in ("pr-review", "fix-pr"):
+        text = (SKILL / f"templates/.github/workflows/opencode-{name}.yml").read_text()
+        assert "MUSE_CI_GITHUB_MEMBERS_TOKEN" not in text
+        job = next(iter(yaml.load(text, Loader=yaml.BaseLoader)["jobs"].values()))
+        steps = job["steps"]
+        index = next(i for i, step in enumerate(steps) if step.get("id") == "members")
+        mint = steps[index]
+        action, sha = mint["uses"].rsplit("@", 1)
+        assert action == "actions/create-github-app-token" and len(sha) == 40
+        assert mint["with"] == {
+            "client-id": "${{ secrets.MUSE_CI_MEMBERS_APP_CLIENT_ID }}",
+            "private-key": "${{ secrets.MUSE_CI_MEMBERS_APP_PRIVATE_KEY }}",
+            "owner": "${{ github.repository_owner }}",
+            "permission-members": "read",
+        }
+        authorize = steps[index + 1]
+        assert authorize["id"] == "prepare"
+        assert authorize["env"]["MUSE_MEMBERS_TOKEN"] == "${{ steps.members.outputs.token }}"
+        others = [step for step in steps if step is not mint]
+        assert "MUSE_CI_MEMBERS_APP_" not in yaml.dump(others)
