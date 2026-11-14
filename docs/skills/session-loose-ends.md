@@ -26,8 +26,10 @@ and the close-out table accounts for every one of them.
 
 After the close-out table comes a 🚪 session close-out for this session only:
 done · needs a decision · not done, and a verdict that leans toward closing —
-✅ close this session, 🟡 main work done (each leftover gets do now, drop, or
-capture in `PROJECTS.md`, a commit, a GitHub issue, or Linear), or 🔵 continue.
+✅ close this session, 🟡 main work done (each leftover is shown as what it
+is, why it matters, and a recommended answer: do here, spin off to a new
+session, capture in `PROJECTS.md`, a commit, a GitHub issue, or Linear, or
+ignore), or 🔵 continue.
 
 **Triggers on:** "any loose ends?", "anything to clean up?", "what's dangling
 here?", "tie this off", returning to a thread wanting only the actionable
