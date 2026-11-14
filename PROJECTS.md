@@ -2592,5 +2592,5 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-TS02] Test: the wrapper script runs the agent argv verbatim, then execs the shell
 - [x] [P72-T01] Change `build_commands` in `spinoff-plan`; note the behavior in SKILL.md step 8
 - [x] [P72-T02] Bump session 0.17.0 → 0.17.1; `just gen`; `just all` (release notes are written at release time, as for P71)
-- [ ] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b)
+- [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [ ] [P72-T04] PR, merge with owner approval
