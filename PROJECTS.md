@@ -2594,3 +2594,61 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T02] Bump session 0.17.0 → 0.17.1; `just gen`; `just all` (release notes are written at release time, as for P71)
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
+
+## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.0)
+**Goal/Requirement**: Move a running agent conversation from one Rex session to another on the same
+computer (owner request 2026-11-14). Rex cannot move a window between sessions, so the skill recreates
+it: same agent, same conversation ID, same working directory, same window name, then the old window closes.
+- One live copy (owner decision 2026-11-14, D1.a): the destination window runs a waiting `handoff`; the
+  old agent's turn ends, the old window closes, the old agent exits, and only then does the handoff exec
+  the resume command. Two copies resumed on one ID both append to one transcript.
+- One launch recipe: the destination window uses the P72 wrapper
+  (`--shell=none -- $SHELL -ilc '"$@"; exec "$0" -il' $SHELL …`); a test holds the literal equal to
+  `spinoff-plan`'s `SHELL_FALLBACK`.
+- Same computer only: the source pane's `host_id` must equal the Rex server's; otherwise the skill stops
+  and says moving across computers is out of scope.
+- The destination session is the owner's choice; a missing one is created.
+
+**Out of Scope**
+- Windows with more than one pane; windows not running Claude Code, Codex, or Muse.
+- Carrying over launch flags (model, permission mode) to the resumed agent.
+- Rewriting existing tabs that still close on exit; they keep that behavior until relaunched.
+
+### Tests & Tasks
+- [x] [P73-TS01] Test: the wrapper literal equals `spinoff-plan`'s `SHELL_FALLBACK`
+- [x] [P73-TS02] Test: refusal rules (other computer, pane count, no agent, unknown conversation, busy or background shell, recent transcript)
+- [x] [P73-TS03] Test: destination by label or ID, creation, near matches, ambiguity
+- [x] [P73-TS04] Test: launch command keeps name and directory, omits an auto-generated name, same agent resumes the same ID
+- [x] [P73-TS05] Test: the handoff never resumes while the old agent is alive, and never resumes unreleased
+- [x] [P73-TS06] Test: the result check (same agent, same PID, same conversation ID)
+- [x] [P73-TS07] Test: `spinoff-plan` recognises Muse's real process name, `muse-bin-<version>`
+- [x] [P73-TS08] Test: a non-Bourne `$SHELL` (fish, tcsh, nushell, unset) never receives the wrapper; `session-move`
+      and `spinoff-plan` choose the shell by the same rule
+- [x] [P73-TS09] Test: two released handoffs for one source resume once; release and abort exclude each other
+- [x] [P73-TS10] Test: the marker directory must be private and owned by the user; a failed window listing is
+      not treated as an empty session
+- [x] [P73-T01] `scripts/session-move` (plan, arm, go, abort, handoff) and `SKILL.md`
+- [x] [P73-T02] Live checks of the helper on throwaway conversations, 2026-11-14: Claude Code (move, abort, release
+      while busy), Codex, and Muse each resumed the same conversation in a new session with the old window closed.
+      Claude Code Remote Control kept the same remote session ID across a move.
+      Not run: an agent following `SKILL.md` end to end; a self-move from inside Codex or Muse; the switch of the
+      Rex app to the new tab after a self-move.
+- [x] [P73-T03] "Not for … (session-move)" clause in `session-spinoff` and `session-handoff`; docs page; README row
+- [x] [P73-T04] Bump session 0.17.1 → 0.18.0; `just gen`; `just all`
+- [ ] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper and the same shell guard: smorinlabs/lost-sessions PR #26 (`5cd47aa`, `8e31a91`), open
+- [ ] [P73-T06] Codex global instructions carry the same Rex rule as Claude Code's: smorin/smorin-bootstrap PR #80 (`bdd16b3`), open
+- [ ] [P73-T07] PR #113, merge with owner approval; then re-point the dev placements at the main checkout
+- [x] [P73-T08] `session-spinoff`'s `verify-launch --agent muse` accepts a real Muse launch. Found during P73-T02:
+      Muse's launcher execs `muse-bin-<version>`, which `detect_agent` compared against the bare name `muse`,
+      so a successful launch reported `agent_ok: false`.
+- [x] [P73-T09] The launch wrapper runs under a Bourne-family shell (owner decision 2026-11-14, option B). Review of
+      smorinlabs/lost-sessions PR #26 found, and a run under `/bin/tcsh` confirmed, that a non-Bourne `$SHELL`
+      rejects `'"$@"; exec "$0" -il'` before the agent starts. `session-move` and `spinoff-plan` now use `$SHELL`
+      only when it is zsh, bash, sh, dash, or ksh, and `/bin/zsh` otherwise. The wrapper text is unchanged.
+      The same guard goes into `lost-sessions` under P73-T05.
+- [x] [P73-T10] Five review findings on PR #113, all confirmed against the code and fixed: (1) two moves armed for
+      one source could both resume, now one `O_EXCL` claim per source window before the exec; (2) `abort` after
+      `go` could close the destination mid-move, now `go` renames and `abort` deletes the one `.armed` marker;
+      (3) the marker directory is checked for owner and mode; (4) a failed window listing no longer counts as an
+      empty session, so cleanup cannot kill a session it could not inspect; (5) `SKILL.md` reruns `plan` when
+      the user picks a near-match session.

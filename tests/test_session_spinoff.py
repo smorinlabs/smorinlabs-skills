@@ -328,6 +328,21 @@ def test_check_launch_flags_wrong_dir_and_agent():
     assert got["ok"] is False and got["cwd_ok"] is False and got["agent_ok"] is False
 
 
+# ── P73-TS07: Muse's launcher execs muse-bin-<version>, so that is the foreground argv0 ──
+
+
+def test_detect_agent_recognises_the_versioned_muse_binary():
+    proc = {"foreground": {"argv0": "/opt/tools/bin/muse-bin-1.4.20-R8619.1"}}
+    assert sp.detect_agent(proc) == "muse"
+
+
+def test_check_launch_accepts_a_muse_launch():
+    proc = {"foreground": {"argv0": "/opt/tools/bin/muse-bin-1.4.20-R8619.1",
+                           "cwd": "/code/shelf-shelf-tags"}}
+    got = sp.check_launch(proc, "/code/shelf-shelf-tags", "muse")
+    assert got["ok"] is True and got["agent"] == "muse" and got["agent_ok"] is True
+
+
 # ── P66-TS07: transcript evidence + label fact (sessions started in a parent dir) ──
 
 
@@ -422,6 +437,28 @@ def test_launch_uses_login_shell(monkeypatch):
     monkeypatch.delenv("SHELL")
     launch = sp.build_commands({**BASE_PLAN, "placement": "new", "name": "n"})["launch"]
     assert launch[launch.index("--") + 1] == "/bin/zsh"
+
+
+# ── P73-TS08: a non-Bourne $SHELL (fish, tcsh) rejects the wrapper, so it never receives it ──
+
+
+@pytest.mark.parametrize(
+    "env_shell, expected",
+    [("/bin/zsh", "/bin/zsh"), ("/opt/homebrew/bin/bash", "/opt/homebrew/bin/bash"),
+     ("/bin/sh", "/bin/sh"), ("/bin/dash", "/bin/dash"), ("/bin/ksh", "/bin/ksh"),
+     ("/opt/homebrew/bin/fish", "/bin/zsh"), ("/bin/tcsh", "/bin/zsh"),
+     ("/usr/local/bin/nu", "/bin/zsh"), ("", "/bin/zsh"), (None, "/bin/zsh")],
+)
+def test_launch_shell_is_bourne_family_or_zsh(env_shell, expected):
+    assert sp.launch_shell(env_shell) == expected
+
+
+def test_launch_never_hands_the_wrapper_to_a_non_bourne_shell(monkeypatch):
+    monkeypatch.setenv("SHELL", "/opt/homebrew/bin/fish")
+    launch = sp.build_commands({**BASE_PLAN, "placement": "new", "name": "n"})["launch"]
+    assert_shell_wrapped(launch, [BASE_PLAN["agent"], BASE_PLAN["brief"]])
+    assert launch[launch.index("--") + 1] == "/bin/zsh"
+    assert not any("fish" in part for part in launch)
 
 
 def test_shell_fallback_runs_agent_verbatim_then_execs_shell(tmp_path):

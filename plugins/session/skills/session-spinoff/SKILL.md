@@ -3,7 +3,7 @@ name: session-spinoff
 allowed-tools: Bash, Read, Skill, AskUserQuestion
 argument-hint: "[idea] [--new | --session <label|id>] [--name <session-name>] [--repo <name|path>] [--claude | --codex | --muse] [--dry-run]"
 arguments: [idea]
-description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), or general Rex tab and session control (rex).
+description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), moving a running conversation to another Rex session (session-move), or general Rex tab and session control (rex).
 ---
 
 # session-spinoff
@@ -223,7 +223,8 @@ first-prompt argument. Remove the file after launch.
    user's focus (`--focus=false`); the jump in step 9 does that. The agent
    runs inside the user's login shell (`$SHELL -ilc '"$@"; exec "$0" -il'`),
    so quitting the agent leaves the tab at a shell prompt instead of closing
-   it. Never launch the agent as the tab's bare command. Save `session_id` (new session) and `window_id` / `block_ids`
+   it. When `$SHELL` is not zsh, bash, sh, dash, or ksh (fish and tcsh reject
+   that wrapper), the helper uses `/bin/zsh`. Never launch the agent as the tab's bare command. Save `session_id` (new session) and `window_id` / `block_ids`
    from its JSON. If it times out, inspect with `rex ls` / `rex window ls`
    before retrying; the tab may already exist.
 3. Check that the agent started in the right directory:
