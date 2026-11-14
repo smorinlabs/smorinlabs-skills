@@ -13,6 +13,9 @@
    `.github/scripts/muse_ci.py`, `.opencode/muse-ci/`, `opencode.json`, and the
    security section of `AGENTS.md`. CODEOWNERS alone is not enforcement; confirm
    branch rules require those reviews and protect the default branch from the bot.
+   Read the rules that actually apply with `gh api repos/OWNER/REPO/rules/branches/BRANCH`:
+   organization rulesets apply there even when the classic
+   `branches/BRANCH/protection` endpoint returns 404 "Branch not protected".
    Read back repository collaborator roles and workflow-path push restrictions.
    Require the write boundary in [security](security.md): all workflow writers
    are trusted organization members, or server-enforced file-path restrictions
