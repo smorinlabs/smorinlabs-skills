@@ -2572,3 +2572,4 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P71-T02] Rename the helper's `SECRET` constant to `PROVIDER_ENV`. The lost-sessions SARIF traced all four flow paths to that assignment (CodeQL's sensitive-name heuristic). Not proven with CodeQL locally; the next CodeQL run on a re-rendered target confirms it
 - [x] [P71-T03] SKILL.md step 4 and acceptance steps 1–2: hook dependencies first (G14), exclude the vendored helper from lint/format hooks (G11), `--codeowner` (G12)
 - [ ] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval
+- [ ] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
