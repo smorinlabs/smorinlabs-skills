@@ -2575,7 +2575,7 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
       Done 2026-11-14: lost-sessions PR #25, merge commit `227f304`; the CodeQL alert #1 instance on `main` is `fixed`
 
-## [~] Project P72: session-spinoff tabs fall back to a shell prompt when the agent exits (session 0.17.0 → 0.17.1)
+## [x] Project P72: session-spinoff tabs fall back to a shell prompt when the agent exits (session 0.17.0 → 0.17.1)
 **Goal/Requirement**: Quitting a spun-off Claude Code, Codex, or Muse agent leaves the Rex tab at a
 normal interactive shell prompt instead of closing the tab (owner request 2026-11-14).
 - Root cause: `spinoff-plan` launched the agent as the tab's only process (`rex new … -- <agent> <brief>`),
@@ -2593,4 +2593,4 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T01] Change `build_commands` in `spinoff-plan`; note the behavior in SKILL.md step 8
 - [x] [P72-T02] Bump session 0.17.0 → 0.17.1; `just gen`; `just all` (release notes are written at release time, as for P71)
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
-- [ ] [P72-T04] PR, merge with owner approval
+- [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
