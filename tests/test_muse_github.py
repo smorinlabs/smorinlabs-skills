@@ -187,6 +187,7 @@ def test_codeowners_hand_written_block_is_recognized(tmp_path):
 @pytest.mark.parametrize("body", [
     OWNERS_BLOCK.replace("@fixture-org/maintainers", "@fixture-user"),
     OWNERS_BLOCK.replace("/AGENTS.md @fixture-org/maintainers\n", ""),
+    OWNERS_BLOCK + "\n" + OWNERS_BLOCK.replace("@fixture-org/maintainers", "@fixture-user"),
 ])
 def test_codeowners_conflicting_block_is_not_overwritten(tmp_path, body):
     (tmp_path / ".github").mkdir()
