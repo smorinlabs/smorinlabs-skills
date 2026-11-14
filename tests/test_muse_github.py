@@ -211,6 +211,27 @@ def test_codeowners_rejects_malformed_owner(tmp_path, owner):
         installer.plan(tmp_path, "fixture-org", codeowner=owner)
 
 
+def run_installer(root, *flags):
+    root.mkdir(exist_ok=True)
+    git(root, "init", "--initial-branch=main")
+    return subprocess.run(["python3", str(SKILL / "scripts/install.py"), str(root), "--organization", "fixture-org",
+                           *flags], capture_output=True, text=True)
+
+
+def test_cli_requires_an_explicit_codeowners_choice(tmp_path):
+    result = run_installer(tmp_path)
+    assert result.returncode != 0 and "--codeowner" in result.stderr and "--no-codeowner" in result.stderr
+    both = run_installer(tmp_path, "--codeowner", "@fixture-org/maintainers", "--no-codeowner")
+    assert both.returncode != 0 and "not allowed with" in both.stderr
+
+
+def test_cli_codeowner_choice_controls_the_plan(tmp_path):
+    with_owner = run_installer(tmp_path / "with", "--codeowner", "@fixture-org/maintainers")
+    assert with_owner.returncode == 0 and "create .github/CODEOWNERS" in with_owner.stdout
+    without = run_installer(tmp_path / "without", "--no-codeowner")
+    assert without.returncode == 0 and "CODEOWNERS" not in without.stdout
+
+
 def test_default_model_is_contributor():
     assert installer.DEFAULT_MODEL == "muse-spark-1.3-contributor"
     assert ci.MODEL == "model_api/" + installer.DEFAULT_MODEL

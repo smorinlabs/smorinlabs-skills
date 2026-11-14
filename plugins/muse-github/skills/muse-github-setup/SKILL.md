@@ -71,9 +71,9 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    non-default model. Pass `--codeowner` with the reviewing owner's `@login` or
    `@organization/team`; ask for it when unknown, never guess it. The installer
    then adds a marked Muse block to the CODEOWNERS file GitHub already reads,
-   or creates `.github/CODEOWNERS`. Without `--codeowner` it leaves CODEOWNERS
-   unchanged, so a re-render keeps a hand-written block only when that block is
-   preserved. The default prints a plan; `--apply` writes
+   or creates `.github/CODEOWNERS`. The installer requires that choice: pass
+   `--no-codeowner` only when the owner manages that ownership another way,
+   and then add it by hand. The default prints a plan; `--apply` writes
    local files. It never installs secrets or enables workflows. Review its diff.
    Existing project instructions are preserved and the security section is
    appended. Existing OpenCode settings are preserved; conflicting providers,

@@ -7,8 +7,9 @@
    installer. `../scripts/install.py WORKTREE --organization OWNER --codeowner REVIEWER [--with-fixes]`
    prints the local plan; append `--apply` to write it. `WORKTREE` and `OWNER`
    come from repository discovery; `REVIEWER` is the owner's `@login` or
-   `@organization/team`, confirmed with the owner. Resolve the script from the
-   installed skill.
+   `@organization/team`, confirmed with the owner. Use `--no-codeowner` in its
+   place only when the owner manages CODEOWNERS another way. Resolve the script
+   from the installed skill.
 2. Inspect every new or changed file. Run `actionlint` on the rendered workflows.
    Run the target's own lint and format hooks on the staged files. Exclude the
    vendored `.github/scripts/muse_ci.py` from Python linters and formatters

@@ -2568,7 +2568,7 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 ### Tests & Tasks
 - [x] [P71-TS01] `--codeowner` creates `.github/CODEOWNERS`, appends to the existing file GitHub reads (`.github/`, root, `docs/`) without shadowing it, is idempotent, recognizes the hand-written block, and refuses a conflicting block, several CODEOWNERS files, or a malformed owner
 - [x] [P71-TS02] The prepared CI `config.json` pins `apiKey` to exactly `{env:META_MUSE_CI_API_KEY}`
-- [x] [P71-T01] `install.py --codeowner` (optional; omitted leaves CODEOWNERS unchanged)
+- [x] [P71-T01] `install.py` requires `--codeowner` or `--no-codeowner` (owner decision 2026-11-13, Q1.A)
 - [x] [P71-T02] Rename the helper's `SECRET` constant to `PROVIDER_ENV`. The lost-sessions SARIF traced all four flow paths to that assignment (CodeQL's sensitive-name heuristic). Not proven with CodeQL locally; the next CodeQL run on a re-rendered target confirms it
 - [x] [P71-T03] SKILL.md step 4 and acceptance steps 1–2: hook dependencies first (G14), exclude the vendored helper from lint/format hooks (G11), `--codeowner` (G12)
 - [ ] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval

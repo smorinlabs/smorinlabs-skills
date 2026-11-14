@@ -151,8 +151,10 @@ def main() -> int:
     parser.add_argument("--with-fixes", action="store_true", help="Include the manual new-PR workflow")
     parser.add_argument("--model", default=DEFAULT_MODEL, choices=MODELS,
                         help=f"Muse model; use a non-default only on the owner's explicit request (default: {DEFAULT_MODEL})")
-    parser.add_argument("--codeowner", help="Owner's @login or @organization/team for the Muse CODEOWNERS block; "
-                        "omitted, CODEOWNERS is not changed")
+    owners = parser.add_mutually_exclusive_group(required=True)
+    owners.add_argument("--codeowner", help="Owner's @login or @organization/team for the Muse CODEOWNERS block")
+    owners.add_argument("--no-codeowner", action="store_true",
+                        help="Leave CODEOWNERS unchanged; the owner must then add the ownership by hand")
     parser.add_argument("--apply", action="store_true", help="Write the listed files; default only prints a plan")
     args = parser.parse_args()
     root = args.worktree.resolve()
@@ -164,8 +166,6 @@ def main() -> int:
         changes = plan(root, args.organization, args.with_fixes, args.model, args.codeowner)
         for name in changes:
             print(("update " if (root / name).exists() else "create ") + name)
-        if args.codeowner is None:
-            print("CODEOWNERS not checked: pass --codeowner to add or verify the Muse ownership block.")
         if args.apply:
             apply(root, changes)
         print(f"{'Applied' if args.apply else 'Planned'} {len(changes)} file changes. "
