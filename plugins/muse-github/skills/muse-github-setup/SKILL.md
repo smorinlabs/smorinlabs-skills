@@ -61,18 +61,31 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    | `muse-spark-1.3` | Standard tier; no training on submitted content |
    | `muse-wonder-1.0` | Muse Wonder 1.0, on explicit request |
 
-4. **Prepare the files in an isolated worktree.** Resolve this skill directory
+4. **Prepare the files in an isolated worktree.** Install the target's hook
+   dependencies before the first commit there (for example
+   `bun install --frozen-lockfile` when `bun.lock` exists); a fresh worktree
+   lacks them. Resolve this skill directory
    through its installed path. Run its `scripts/install.py` with the target
    worktree and `--organization` set to the actual owner. Add `--with-fixes` for
    the requested manual workflow, and `--model` only for an explicitly requested
-   non-default model. The default prints a plan; `--apply` writes
+   non-default model. Pass `--codeowner` with the reviewing owner's `@login` or
+   `@organization/team`; ask for it when unknown, never guess it. The installer
+   then adds a marked Muse block to the CODEOWNERS file GitHub already reads,
+   or creates `.github/CODEOWNERS`. Without `--codeowner` it leaves CODEOWNERS
+   unchanged, so a re-render keeps a hand-written block only when that block is
+   preserved. The default prints a plan; `--apply` writes
    local files. It never installs secrets or enables workflows. Review its diff.
    Existing project instructions are preserved and the security section is
    appended. Existing OpenCode settings are preserved; conflicting providers,
-   JSONC files, symlinks, or changed managed files require a reviewed merge.
+   JSONC files, symlinks, CODEOWNERS blocks, or changed managed files require a
+   reviewed merge.
    Do not overwrite those files to force the helper to pass. Adapt project
    guidance in `AGENTS.md` without removing the security constraints. Preserve
-   the copied upstream NOTICE.
+   the copied upstream NOTICE. Check the target's Python lint and format hooks
+   (for example a `ruff` pre-commit hook): `.github/scripts/muse_ci.py` is a
+   vendored managed file, so exclude it from those tools (for example
+   `[tool.ruff] exclude`, with a comment) rather than editing it. Revert any
+   hook autofix so the file stays byte-identical to the template.
 
 5. **Provision only the intended secrets.** Read
    [credential provisioning](references/secrets.md). If an installed private

@@ -13,6 +13,11 @@ import tempfile
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 MARKER = "<!-- muse-github-setup:security:start -->"
+OWNERS_MARKER = "# Muse CI security-sensitive configuration (muse-github-setup)."
+# GitHub uses the first CODEOWNERS it finds, in this order.
+OWNERS_FILES = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+OWNED_PATHS = ("/.github/workflows/opencode-*.yml", "/.github/scripts/muse_ci.py",
+               "/.opencode/muse-ci/", "/opencode.json", "/AGENTS.md")
 TEMPLATE_FILES = (
     ".github/scripts/muse_ci.py", ".github/workflows/opencode-pr-review.yml",
     ".github/workflows/opencode-fix-pr.yml", ".opencode/muse-ci/review.json",
@@ -60,9 +65,29 @@ def with_model(body: str, model: str) -> str:
     return body.replace(MODELS[DEFAULT_MODEL], MODELS[model]).replace(DEFAULT_MODEL, model)
 
 
-def plan(root: Path, organization: str, with_fixes: bool = False, model: str = DEFAULT_MODEL) -> dict[str, str]:
+def owners_change(root: Path, codeowner: str) -> dict[str, str]:
+    login = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?"
+    if not re.fullmatch(rf"@{login}(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)?", codeowner):
+        raise Conflict("codeowner must be the owner's @login or @organization/team")
+    existing = [name for name in OWNERS_FILES if destination(root, name).exists()]
+    if len(existing) > 1:
+        raise Conflict(f"Several CODEOWNERS files exist ({', '.join(existing)}); GitHub reads only the first")
+    name = existing[0] if existing else OWNERS_FILES[0]
+    current = destination(root, name).read_text() if existing else ""
+    block = "\n".join([OWNERS_MARKER, "# CODEOWNERS is not enforcement on its own; branch rules must require review.",
+                       *(f"{path} {codeowner}" for path in OWNED_PATHS)]) + "\n"
+    if OWNERS_MARKER in current:
+        if block not in current:
+            raise Conflict(f"Existing Muse block in {name} differs; reconcile its owners explicitly")
+        return {}
+    return {name: current.rstrip() + ("\n\n" if current else "") + block}
+
+
+def plan(root: Path, organization: str, with_fixes: bool = False, model: str = DEFAULT_MODEL,
+         codeowner: str | None = None) -> dict[str, str]:
     if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?", organization):
         raise Conflict("organization must be the actual GitHub organization login")
+    owners = owners_change(root, codeowner) if codeowner is not None else {}
     if model not in MODELS:
         raise Conflict(f"model must be one of: {', '.join(MODELS)}")
     result: dict[str, str] = {}
@@ -97,6 +122,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str = D
             raise Conflict("Existing Muse AGENTS.md section differs; preserve its project-specific edits")
     else:
         result["AGENTS.md"] = current.rstrip() + ("\n\n" if current else "") + security
+    result.update(owners)
     return result
 
 
@@ -125,6 +151,8 @@ def main() -> int:
     parser.add_argument("--with-fixes", action="store_true", help="Include the manual new-PR workflow")
     parser.add_argument("--model", default=DEFAULT_MODEL, choices=MODELS,
                         help=f"Muse model; use a non-default only on the owner's explicit request (default: {DEFAULT_MODEL})")
+    parser.add_argument("--codeowner", help="Owner's @login or @organization/team for the Muse CODEOWNERS block; "
+                        "omitted, CODEOWNERS is not changed")
     parser.add_argument("--apply", action="store_true", help="Write the listed files; default only prints a plan")
     args = parser.parse_args()
     root = args.worktree.resolve()
@@ -133,9 +161,11 @@ def main() -> int:
                                capture_output=True, text=True)
         if probe.returncode or Path(probe.stdout.strip()).resolve() != root:
             raise Conflict("worktree must name the Git repository root")
-        changes = plan(root, args.organization, args.with_fixes, args.model)
+        changes = plan(root, args.organization, args.with_fixes, args.model, args.codeowner)
         for name in changes:
             print(("update " if (root / name).exists() else "create ") + name)
+        if args.codeowner is None:
+            print("CODEOWNERS not checked: pass --codeowner to add or verify the Muse ownership block.")
         if args.apply:
             apply(root, changes)
         print(f"{'Applied' if args.apply else 'Planned'} {len(changes)} file changes. "

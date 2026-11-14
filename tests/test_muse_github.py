@@ -146,6 +146,71 @@ def test_install_rejects_symlink_parent(tmp_path):
     assert list(other.iterdir()) == []
 
 
+OWNERS_BLOCK = (
+    "# Muse CI security-sensitive configuration (muse-github-setup).\n"
+    "# CODEOWNERS is not enforcement on its own; branch rules must require review.\n"
+    "/.github/workflows/opencode-*.yml @fixture-org/maintainers\n"
+    "/.github/scripts/muse_ci.py @fixture-org/maintainers\n"
+    "/.opencode/muse-ci/ @fixture-org/maintainers\n"
+    "/opencode.json @fixture-org/maintainers\n"
+    "/AGENTS.md @fixture-org/maintainers\n"
+)
+
+
+def test_codeowners_is_created_only_with_an_explicit_owner(tmp_path):
+    assert ".github/CODEOWNERS" not in installer.plan(tmp_path, "fixture-org")
+    changes = installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
+    assert changes[".github/CODEOWNERS"] == OWNERS_BLOCK
+    installer.apply(tmp_path, changes)
+    assert installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers") == {}
+
+
+@pytest.mark.parametrize("location", [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"])
+def test_codeowners_appends_to_the_existing_file_without_shadowing_it(tmp_path, location):
+    existing = "* @fixture-org/everyone\n/docs/ @fixture-user\n"
+    target = tmp_path / location
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(existing)
+    changes = installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
+    assert set(changes) & {".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} == {location}
+    assert changes[location] == existing + "\n" + OWNERS_BLOCK
+    installer.apply(tmp_path, changes)
+    assert installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers") == {}
+
+
+def test_codeowners_hand_written_block_is_recognized(tmp_path):
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github/CODEOWNERS").write_text("* @fixture-user\n\n" + OWNERS_BLOCK)
+    assert ".github/CODEOWNERS" not in installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
+
+
+@pytest.mark.parametrize("body", [
+    OWNERS_BLOCK.replace("@fixture-org/maintainers", "@fixture-user"),
+    OWNERS_BLOCK.replace("/AGENTS.md @fixture-org/maintainers\n", ""),
+])
+def test_codeowners_conflicting_block_is_not_overwritten(tmp_path, body):
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github/CODEOWNERS").write_text(body)
+    with pytest.raises(installer.Conflict, match="CODEOWNERS"):
+        installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
+    assert (tmp_path / ".github/CODEOWNERS").read_text() == body
+
+
+def test_codeowners_refuses_more_than_one_file(tmp_path):
+    (tmp_path / "CODEOWNERS").write_text("* @fixture-user\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/CODEOWNERS").write_text("* @fixture-user\n")
+    with pytest.raises(installer.Conflict, match="CODEOWNERS"):
+        installer.plan(tmp_path, "fixture-org", codeowner="@fixture-org/maintainers")
+
+
+@pytest.mark.parametrize("owner", ["", "fixture-user", "@", "@a b", "@fixture-user\n/x @evil",
+                                   "@org/team/extra", "@-bad"])
+def test_codeowners_rejects_malformed_owner(tmp_path, owner):
+    with pytest.raises(installer.Conflict, match="codeowner"):
+        installer.plan(tmp_path, "fixture-org", codeowner=owner)
+
+
 def test_default_model_is_contributor():
     assert installer.DEFAULT_MODEL == "muse-spark-1.3-contributor"
     assert ci.MODEL == "model_api/" + installer.DEFAULT_MODEL
@@ -281,6 +346,7 @@ def test_prepare_generates_isolated_configuration_and_exact_diff(repo_pair, tmp_
     assert config["formatter"] is False and config["lsp"] is False
     assert config["small_model"] == ci.MODEL
     assert "fixture-value" not in (runtimes[0] / "config.json").read_text()
+    assert config["provider"]["model_api"]["options"]["apiKey"] == "{env:META_MUSE_CI_API_KEY}"
     output = (tmp_path / "output").read_text()
     assert head in output and "-answer = 1" in output and "+answer = 2" in output
     env_file = (tmp_path / "env").read_text()
