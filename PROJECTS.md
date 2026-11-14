@@ -2552,7 +2552,7 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P70-T02] Gotcha-driven doc edits (no-team branch, policies API, single maintainer, test path, dry-run probe, key scope)
 - [x] [P70-T03] Pass `just all` and skill-quality, open the PR, merge
 
-## [~] Project P71: muse-github-setup gotchas G11–G14 (muse-github v0.3.0 → v0.4.0)
+## [x] Project P71: muse-github-setup gotchas G11–G14 (muse-github v0.3.0 → v0.4.0)
 
 **Goal/Requirement**: Fix four gaps found installing Muse reviews on `smorinlabs/lost-sessions`
 (gotcha log `~/c/prompts/T8-output/muse-skill-gotchas.md`).
@@ -2572,4 +2572,5 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P71-T02] Rename the helper's `SECRET` constant to `PROVIDER_ENV`. The lost-sessions SARIF traced all four flow paths to that assignment (CodeQL's sensitive-name heuristic). Not proven with CodeQL locally; the next CodeQL run on a re-rendered target confirms it
 - [x] [P71-T03] SKILL.md step 4 and acceptance steps 1–2: hook dependencies first (G14), exclude the vendored helper from lint/format hooks (G11), `--codeowner` (G12)
 - [x] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval
-- [ ] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
+- [x] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
+      Done 2026-11-14: lost-sessions PR #25, merge commit `227f304`; the CodeQL alert #1 instance on `main` is `fixed`
