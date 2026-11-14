@@ -220,7 +220,10 @@ first-prompt argument. Remove the file after launch.
 1. Run `worktree`, then `worktree_add`. A failure stops here; nothing in Rex
    was touched.
 2. Run `launch`. Adding a tab to an existing session does not move the
-   user's focus (`--focus=false`); the jump in step 9 does that. Save `session_id` (new session) and `window_id` / `block_ids`
+   user's focus (`--focus=false`); the jump in step 9 does that. The agent
+   runs inside the user's login shell (`$SHELL -ilc '"$@"; exec "$0" -il'`),
+   so quitting the agent leaves the tab at a shell prompt instead of closing
+   it. Never launch the agent as the tab's bare command. Save `session_id` (new session) and `window_id` / `block_ids`
    from its JSON. If it times out, inspect with `rex ls` / `rex window ls`
    before retrying; the tab may already exist.
 3. Check that the agent started in the right directory:
