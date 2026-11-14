@@ -27,10 +27,12 @@ Verbs (JSON on stdout; a refusal prints to stderr and exits 2):
       Release the handoff. With --wait, block until the conversation runs in
       the destination window and report the check. Exit 3 when it does not.
   abort              (arm JSON on stdin)
-      Remove an armed destination window that has not resumed.
+      Remove an armed destination window. Refuses once the move was released:
+      go and abort act on one marker file, so only one of them can succeed.
   handoff ...        (internal: the destination window's program)
       Wait for the release and for the old agent's turn to end, close the old
-      window, wait for the old agent to exit, then exec the resume command.
+      window, wait for the old agent to exit, claim the one right to resume,
+      then exec the resume command.
 
 Stdlib only.
 """
@@ -42,6 +44,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -234,6 +237,17 @@ def turn_ended(cfg: dict, ports) -> bool:
     return True
 
 
+def claim_path(cfg: dict) -> str:
+    """The file whose creation is the one right to resume this source's conversation.
+
+    Named after the source window and its agent's PID, not after one arm, so every
+    handoff armed for the same source contends for the same file. Rex window IDs are
+    unique for good, so the name never collides with a later move.
+    """
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{cfg['old_window']}-{cfg['old_pid']}")
+    return str(Path(cfg["release_file"]).parent / f"{stem}.claim")
+
+
 def run_handoff(cfg: dict, ports) -> int:
     pid, resume = cfg["old_pid"], shlex.join(cfg["resume_argv"])
     ports.say(f"session-move: waiting to take over the {NAMES[cfg['agent']]} conversation "
@@ -252,6 +266,11 @@ def run_handoff(cfg: dict, ports) -> int:
     if not _wait(ports, lambda: not ports.alive(pid), EXIT_TIMEOUT):
         ports.say(f"session-move: the old agent (pid {pid}) did not exit. Not resuming, because "
                   "two copies would write to one conversation.")
+        return 1
+    if not ports.claim(claim_path(cfg)):
+        # Two moves were armed for one source and both were released.
+        ports.say("session-move: another window already took over this conversation, so it is "
+                  "not resumed here.")
         return 1
     if cfg.get("follow"):
         ports.follow()
@@ -292,6 +311,14 @@ class Ports:
     def close_window(self, session: str, window: str) -> None:
         subprocess.run(["rex", "window", "close", "-s", session, window],
                        capture_output=True, timeout=15, check=False)
+
+    def claim(self, path: str) -> bool:
+        """Create the claim file; False when another handoff created it first."""
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        except FileExistsError:
+            return False
+        return True
 
     def follow(self) -> None:
         """Switch the Rex app to this window. Skipped unless exactly one app is connected;
@@ -337,8 +364,17 @@ def list_blocks(session: str) -> list[dict]:
     return data.get("blocks", [])
 
 
-def list_windows(session: str) -> list[dict]:
-    return (_run_json(["rex", "window", "list", "-s", session, "--json"]) or {}).get("windows", [])
+def list_windows(session: str) -> list[dict] | None:
+    """The session's windows, or None when Rex could not list them (not the same as none)."""
+    data = _run_json(["rex", "window", "list", "-s", session, "--json"])
+    return None if data is None else data.get("windows", [])
+
+
+def window_closed(windows: list[dict] | None, window_id: str) -> bool | None:
+    """Is the window gone? None when the listing failed, so the answer is unknown."""
+    if windows is None:
+        return None
+    return all(w.get("window_id") != window_id for w in windows)
 
 
 def block_process(session: str, block: str) -> dict:
@@ -393,6 +429,8 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
     if not session_id:
         raise MoveRefusal("not running inside Rex (REX_SESSION is unset); pass --session and --window")
     blocks, windows = list_blocks(session_id), list_windows(session_id)
+    if windows is None:
+        raise MoveRefusal("Rex could not list the windows of the source session")
     if window_arg:
         match = [w for w in windows if window_arg in (w.get("window_id"), w.get("label"))]
         if len(match) != 1:
@@ -453,15 +491,57 @@ def _remove_window(session_id: str, window_id: str, created_session: bool) -> di
     subprocess.run(["rex", "window", "close", "-s", session_id, window_id],
                    capture_output=True, timeout=15, check=False)
     killed = False
-    if created_session and not list_windows(session_id):  # only a session this move created
+    # Only a session this move created, and only when Rex confirms it is empty: a failed
+    # listing is unknown, and the session may hold a window someone else opened.
+    if created_session and list_windows(session_id) == []:
         killed = subprocess.run(["rex", "session", "kill", session_id], capture_output=True,
                                 timeout=15, check=False).returncode == 0
     return {"closed_window": window_id, "killed_created_session": killed}
 
 
+def state_dir() -> Path:
+    """This user's private directory for the marker files of a move.
+
+    Its path is predictable, and the temp directory may be shared, so another user could
+    create it first and then release a move. Anything not ours and private is refused.
+    """
+    path = Path(tempfile.gettempdir()) / f"session-move-{os.getuid()}"
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise MoveRefusal(f"{path} is not a private directory owned by this user; remove it "
+                          "and run the move again")
+    return path
+
+
+# A waiting handoff owns "<release>.armed". go renames that marker to the release file;
+# abort deletes it. Both act on the one marker, so exactly one of them can succeed.
+
+
+def take_release(release_file: str) -> None:
+    try:
+        os.rename(f"{release_file}.armed", release_file)
+    except FileNotFoundError:
+        if not os.path.exists(release_file):  # already released is fine; anything else is not
+            raise MoveRefusal("this move is no longer armed (it was aborted, or arming failed); "
+                              "plan and arm again") from None
+
+
+def take_abort(release_file: str) -> None:
+    try:
+        os.unlink(f"{release_file}.armed")
+    except FileNotFoundError:
+        if os.path.exists(release_file):
+            raise MoveRefusal("this move was already released, so the destination window is "
+                              "taking over the conversation; not closing it") from None
+        raise MoveRefusal("this move is not armed, so there is nothing to abort") from None
+
+
 def arm(plan: dict) -> tuple[dict, int]:
-    state = Path(tempfile.gettempdir()) / f"session-move-{os.getuid()}"
-    state.mkdir(mode=0o700, exist_ok=True)
+    state = state_dir()
     stem = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{plan['conversation_id']}-{plan['pid']}")
     release = state / f"{stem}-{int(time.time())}.release"
     created = _run_json(build_launch(plan, sys.executable, str(Path(__file__).resolve()),
@@ -480,7 +560,7 @@ def arm(plan: dict) -> tuple[dict, int]:
     fg = block_process(session_id, block_id).get("foreground") or {}
     host = next((b.get("host_id") for b in list_blocks(session_id)
                  if b.get("block_id") == block_id), None)
-    label = next((w.get("label") for w in list_windows(session_id)
+    label = next((w.get("label") for w in list_windows(session_id) or []
                   if w.get("window_id") == window_id), None)
     src = plan["source"]
     checks = {
@@ -499,13 +579,14 @@ def arm(plan: dict) -> tuple[dict, int]:
         "jump": shlex.join(jump_command(session_id, window_id, single_app_client())),
     }
     if not result["armed"]:
+        armed_file.unlink(missing_ok=True)  # so a later go on this result refuses
         result["removed"] = _remove_window(session_id, window_id, result["created_session"])
         return result, 3
     return result, 0
 
 
 def go(armed: dict, wait: bool) -> tuple[dict, int]:
-    Path(armed["release_file"]).touch()
+    take_release(armed["release_file"])
     result = {"released": True, "jump": armed["jump"]}
     if not wait:
         return result, 0
@@ -527,8 +608,8 @@ def go(armed: dict, wait: bool) -> tuple[dict, int]:
                               (row or {}).get("id"))
     src = armed["source"]
     result |= check
-    result["old_window_closed"] = all(w.get("window_id") != src["window_id"]
-                                      for w in list_windows(src["session_id"]))
+    result["old_window_closed"] = window_closed(list_windows(src["session_id"]),
+                                                src["window_id"])
     ok = check["resumed"] and check["same_conversation"] is not False
     return result, 0 if ok else 3
 
@@ -538,7 +619,7 @@ def abort(armed: dict) -> dict:
     if fg.get("pid") != armed["handoff_pid"] or detect_agent({"foreground": fg}):
         raise MoveRefusal("the destination window is not waiting any more (the conversation may "
                           "have resumed there); not closing it")
-    Path(armed["release_file"]).unlink(missing_ok=True)
+    take_abort(armed["release_file"])
     return {"aborted": True,
             **_remove_window(armed["session_id"], armed["window_id"], armed["created_session"])}
 

@@ -2624,6 +2624,9 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-TS07] Test: `spinoff-plan` recognises Muse's real process name, `muse-bin-<version>`
 - [x] [P73-TS08] Test: a non-Bourne `$SHELL` (fish, tcsh, nushell, unset) never receives the wrapper; `session-move`
       and `spinoff-plan` choose the shell by the same rule
+- [x] [P73-TS09] Test: two released handoffs for one source resume once; release and abort exclude each other
+- [x] [P73-TS10] Test: the marker directory must be private and owned by the user; a failed window listing is
+      not treated as an empty session
 - [x] [P73-T01] `scripts/session-move` (plan, arm, go, abort, handoff) and `SKILL.md`
 - [x] [P73-T02] Live checks of the helper on throwaway conversations, 2026-11-14: Claude Code (move, abort, release
       while busy), Codex, and Muse each resumed the same conversation in a new session with the old window closed.
@@ -2632,7 +2635,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       Rex app to the new tab after a self-move.
 - [x] [P73-T03] "Not for … (session-move)" clause in `session-spinoff` and `session-handoff`; docs page; README row
 - [x] [P73-T04] Bump session 0.17.1 → 0.18.0; `just gen`; `just all`
-- [ ] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper: smorinlabs/lost-sessions PR #26 (`5cd47aa`), open
+- [ ] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper and the same shell guard: smorinlabs/lost-sessions PR #26 (`5cd47aa`, `8e31a91`), open
 - [ ] [P73-T06] Codex global instructions carry the same Rex rule as Claude Code's: smorin/smorin-bootstrap PR #80 (`bdd16b3`), open
 - [ ] [P73-T07] PR #113, merge with owner approval; then re-point the dev placements at the main checkout
 - [x] [P73-T08] `session-spinoff`'s `verify-launch --agent muse` accepts a real Muse launch. Found during P73-T02:
@@ -2643,3 +2646,9 @@ it: same agent, same conversation ID, same working directory, same window name, 
       rejects `'"$@"; exec "$0" -il'` before the agent starts. `session-move` and `spinoff-plan` now use `$SHELL`
       only when it is zsh, bash, sh, dash, or ksh, and `/bin/zsh` otherwise. The wrapper text is unchanged.
       The same guard goes into `lost-sessions` under P73-T05.
+- [x] [P73-T10] Five review findings on PR #113, all confirmed against the code and fixed: (1) two moves armed for
+      one source could both resume, now one `O_EXCL` claim per source window before the exec; (2) `abort` after
+      `go` could close the destination mid-move, now `go` renames and `abort` deletes the one `.armed` marker;
+      (3) the marker directory is checked for owner and mode; (4) a failed window listing no longer counts as an
+      empty session, so cleanup cannot kill a session it could not inspect; (5) `SKILL.md` reruns `plan` when
+      the user picks a near-match session.

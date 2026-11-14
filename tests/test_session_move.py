@@ -226,8 +226,9 @@ class FakePorts:
     """The outside world for run_handoff: a clock, the old agent, and Rex."""
 
     def __init__(self, *, released_at=0.0, status="idle", idle_at=0.0, alive=True,
-                 dies_on_close=True, quiet_at=None):
+                 dies_on_close=True, quiet_at=None, claims=None):
         self.t = 0.0
+        self.claims = set() if claims is None else claims  # shared: one filesystem
         self.released_at, self.status_final, self.idle_at = released_at, status, idle_at
         self.is_alive, self.dies_on_close, self.quiet_at = alive, dies_on_close, quiet_at
         self.closed, self.execed, self.followed, self.said = [], None, False, []
@@ -254,6 +255,12 @@ class FakePorts:
         self.closed.append((session, window))
         if self.dies_on_close:
             self.is_alive = False
+
+    def claim(self, path):
+        if path in self.claims:
+            return False
+        self.claims.add(path)
+        return True
 
     def follow(self):
         self.followed = True
@@ -315,6 +322,135 @@ def test_codex_waits_for_a_quiet_transcript():
     assert sm.run_handoff(cfg(agent="codex", transcript="/t/rollout.jsonl",
                               resume_argv=["codex", "resume", "conv-1"]), ports) == 0
     assert ports.t >= 10.0 + sm.QUIET_SECONDS and ports.execed == ["codex", "resume", "conv-1"]
+
+
+# ── P73-TS09: one resume per source, release and abort exclude each other ──
+
+
+def test_two_released_handoffs_resume_the_conversation_only_once():
+    claims = set()
+    first, second = FakePorts(claims=claims), FakePorts(claims=claims)
+    assert sm.run_handoff(cfg(release_file="/state/a.release"), first) == 0
+    assert sm.run_handoff(cfg(release_file="/state/b.release", follow=True), second) == 1
+    assert first.execed == ["claude", "--resume", "conv-1"]
+    assert second.execed is None and not second.followed
+    assert "already took over" in second.said[-1]
+
+
+def test_the_claim_belongs_to_the_source_window_not_to_one_arm():
+    a, b = cfg(release_file="/state/a.release"), cfg(release_file="/state/b.release")
+    assert sm.claim_path(a) == sm.claim_path(b)
+    assert sm.claim_path(a).startswith("/state/")
+    assert sm.claim_path(a) != sm.claim_path(cfg(release_file="/state/a.release",
+                                                 old_window="window:w2"))
+
+
+def test_the_real_claim_can_be_taken_once(tmp_path):
+    path = str(tmp_path / "w1-4242.claim")
+    assert sm.Ports().claim(path) is True
+    assert sm.Ports().claim(path) is False
+
+
+def armed_marker(tmp_path) -> str:
+    release = tmp_path / "conv-4242-1.release"
+    Path(f"{release}.armed").write_text("77")
+    return str(release)
+
+
+def test_release_wins_then_abort_refuses(tmp_path):
+    release = armed_marker(tmp_path)
+    sm.take_release(release)
+    assert Path(release).exists() and not Path(f"{release}.armed").exists()
+    with pytest.raises(sm.MoveRefusal, match="already released"):
+        sm.take_abort(release)
+
+
+def test_abort_wins_then_release_refuses(tmp_path):
+    release = armed_marker(tmp_path)
+    sm.take_abort(release)
+    with pytest.raises(sm.MoveRefusal, match="no longer armed"):
+        sm.take_release(release)
+    assert not Path(release).exists()  # a refused release never creates the release file
+
+
+def test_releasing_twice_is_harmless(tmp_path):
+    release = armed_marker(tmp_path)
+    sm.take_release(release)
+    sm.take_release(release)
+    assert Path(release).exists()
+
+
+def test_abort_of_a_move_that_was_never_armed_says_so(tmp_path):
+    with pytest.raises(sm.MoveRefusal, match="not armed"):
+        sm.take_abort(str(tmp_path / "missing.release"))
+
+
+# ── P73-TS10: the state directory is private; a failed listing is not "empty" ──
+
+
+def test_state_dir_is_created_private(tmp_path, monkeypatch):
+    monkeypatch.setattr(sm.tempfile, "gettempdir", lambda: str(tmp_path))
+    got = sm.state_dir()
+    assert got.parent == tmp_path and got.is_dir()
+    assert got.stat().st_mode & 0o777 == 0o700
+    assert sm.state_dir() == got  # a second move reuses it
+
+
+def test_state_dir_readable_by_others_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(sm.tempfile, "gettempdir", lambda: str(tmp_path))
+    loose = tmp_path / f"session-move-{sm.os.getuid()}"
+    loose.mkdir()
+    loose.chmod(0o755)
+    with pytest.raises(sm.MoveRefusal, match="not a private directory"):
+        sm.state_dir()
+
+
+def test_state_dir_that_is_a_link_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(sm.tempfile, "gettempdir", lambda: str(tmp_path))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir(mode=0o700)
+    (tmp_path / f"session-move-{sm.os.getuid()}").symlink_to(elsewhere)
+    with pytest.raises(sm.MoveRefusal, match="not a private directory"):
+        sm.state_dir()
+
+
+def test_state_dir_owned_by_someone_else_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(sm.tempfile, "gettempdir", lambda: str(tmp_path))
+    real = sm.os.getuid()
+    (tmp_path / f"session-move-{real + 1}").mkdir(mode=0o700)  # owned by the real user
+    monkeypatch.setattr(sm.os, "getuid", lambda: real + 1)     # ... but we are someone else
+    with pytest.raises(sm.MoveRefusal, match="not a private directory"):
+        sm.state_dir()
+
+
+def test_a_failed_window_listing_is_not_an_empty_one(monkeypatch):
+    monkeypatch.setattr(sm, "_run_json", lambda argv: None)
+    assert sm.list_windows("session:s") is None
+    monkeypatch.setattr(sm, "_run_json", lambda argv: {"windows": []})
+    assert sm.list_windows("session:s") == []
+
+
+class Ran:
+    returncode = 0
+
+
+@pytest.mark.parametrize(
+    "listing, killed",
+    [(None, False), ([], True), ([{"window_id": "window:other"}], False)],
+)
+def test_only_a_confirmed_empty_created_session_is_killed(monkeypatch, listing, killed):
+    calls = []
+    monkeypatch.setattr(sm.subprocess, "run", lambda argv, **kw: calls.append(argv) or Ran())
+    monkeypatch.setattr(sm, "list_windows", lambda session: listing)
+    got = sm._remove_window("session:new", "window:w9", created_session=True)
+    assert got["killed_created_session"] is killed
+    assert (["rex", "session", "kill", "session:new"] in calls) is killed
+
+
+def test_old_window_closed_is_unknown_when_the_listing_fails():
+    assert sm.window_closed(None, "window:w1") is None
+    assert sm.window_closed([], "window:w1") is True
+    assert sm.window_closed([{"window_id": "window:w1"}], "window:w1") is False
 
 
 def test_jump_command_names_the_app_when_one_is_known():

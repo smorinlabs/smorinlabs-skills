@@ -88,7 +88,9 @@ uv run --script "$MOVE" plan --to "<destination>" > "$T/plan.json"; echo "exit=$
 - **Exit 2:** relay the reason and stop. See [Refusals](#refusals).
 - **`destination.exists` is false and `destination.near` is not empty:** the
   name is close to an existing session. Ask whether to use that session or
-  create the new one.
+  create the new one. If the user picks the existing session, run `plan`
+  again with that session as `--to`, so `plan.json` names it. The saved plan
+  still says "create a new session", and `arm` does what the plan says.
 - **`destination.exists` is false and `near` is empty:** say the session will
   be created. Do not ask.
 
@@ -117,7 +119,10 @@ window yet.
   removed the new window (and a session it had just created). Stop.
 
 To cancel after this point, run `uv run --script "$MOVE" abort < "$T/armed.json"`.
-It removes the waiting window and refuses if the conversation already resumed.
+It removes the waiting window. It refuses once `go` has run: release and abort
+act on one marker file, so only one of them can succeed. Run `arm` once per
+move; if two windows are armed for one source and both are released, only the
+first resumes and the other says so and stays at a shell prompt.
 
 ### 5. Release
 
@@ -135,7 +140,7 @@ agent. Report:
 |---|---|
 | `resumed` | The destination window runs the same agent. |
 | `same_conversation` | `true`: the agent's own record shows the same conversation ID (Claude Code and Muse). `null`: Codex keeps no such record, so only the process was checked. `false`: a different conversation; say so plainly. |
-| `old_window_closed` | The source window is gone. |
+| `old_window_closed` | `true`: the source window is gone. `null`: Rex could not list the source session, so it is unknown; say so. |
 | `jump` | The command that switches the Rex app to the new window. Print it and offer to run it. It names the app with `-C` when exactly one is connected; with several, ask which device. |
 
 If `source.only_window` was true in the plan, add that the source session is
@@ -174,6 +179,10 @@ session themselves. A long final message delays the move, and anything after
 | `background shell running` | The move would end that shell. Ask the user. |
 | `transcript changed Ns ago` | Codex and Muse have no idle signal; wait a few seconds and plan again. |
 | `already in that session` | Nothing to do. |
+| `could not list the windows` | Rex did not answer. Nothing was changed; try again. |
+| `not a private directory owned by this user` | The helper's marker directory under the temp directory has the wrong owner or permissions. Relay the path; the user removes it. |
+| `no longer armed` | `go` ran after an `abort` or a failed `arm`. Plan and arm again. |
+| `already released` | `abort` ran after `go`. The move is in progress or done; do not close the destination window. |
 | `N sessions are labelled …` | Ask which one and pass its session ID. |
 
 ## Limits to state when they apply
