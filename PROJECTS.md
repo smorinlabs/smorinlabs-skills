@@ -2507,7 +2507,7 @@ plan of record and the conversation — and labeled as such.
 - [x] [P68-T03] `just gen`; update `docs/skills/session-status.md`
 - [x] [P68-T04] Bump session 0.15.0 → 0.16.0, quality check, PR, merge (#106; ships in the next `release/next` release)
 
-## [~] Project P69: Close-out small items read clearly, each with a recommended answer (session 0.16.0 → 0.17.0)
+## [x] Project P69: Close-out small items read clearly, each with a recommended answer (session 0.16.0 → 0.17.0)
 
 **Purpose:** a 🟡 close-out names each small item well enough that the reader can answer it without
 reconstructing context. The trigger: `session-status` printed "S1 — the second review of the
@@ -2535,4 +2535,4 @@ deletion-design fixes …", which never said which design, why it mattered, or w
 - [x] [P69-T01] Rewrite the 🟡 section, Shape example, Step 2 ID rule, and Compact form in `plugins/session/references/close-verdict.md`
 - [x] [P69-T02] Update `session-status`, `session-recap`, and `session-loose-ends` SKILL.md close-out text and their docs pages
 - [x] [P69-T03] `just gen`; bump session 0.16.0 → 0.17.0; `just all`; `skill-quality` on all three skills at the worktree path
-- [ ] [P69-T04] PR, merge with owner approval
+- [x] [P69-T04] PR, merge with owner approval (#107; ships in the next `release/next` release)
