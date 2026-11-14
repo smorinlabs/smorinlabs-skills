@@ -22,7 +22,9 @@ session collapses to a few lines; a multi-day one coarsens to milestones
 It ends with a 🚪 close-out for this session only: main work versus small
 items in three buckets (done · needs a decision · not done), and a verdict
 that leans toward closing — ✅ close this session, 🟡 main work done (close out
-N small items?), or 🔵 continue. It is added after the existing `🏁 Close`
+N small items, each shown as what it is, why it matters, and a recommended
+answer: do here, spin off, capture, or ignore), or 🔵 continue. It is added
+after the existing `🏁 Close`
 verdict, which is unchanged.
 
 **Triggers on:** "catch me up", "where was I", "where are we", "recap this

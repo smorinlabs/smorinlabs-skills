@@ -88,3 +88,36 @@ def test_standalone_skill_dir_resolves_references(name, tmp_path):
     assert SHARED in cited
     missing = [c for c in cited if not (dest / c).is_file()]
     assert not missing, f"unresolved in standalone install: {missing}"
+
+
+# P69 — small items are self-contained blocks with a recommended answer
+ANSWERS = ("Do here", "Spin off", "Capture", "Ignore")
+
+
+def test_source_defines_answers_and_item_block():
+    text = SOURCE.read_text()
+    for answer in ANSWERS:
+        assert f"**{answer}**" in text
+    assert "Do now" not in text and "**Drop**" not in text
+    for label in ("What", "Why", "▶"):
+        assert f"`{label}`" in text
+    assert "/session-spinoff" in text
+    assert "Close out 1 small item, then this session can close" in text
+
+
+@pytest.mark.parametrize("text_of", [
+    lambda: skill_md("session-status"),
+    lambda: SOURCE.read_text().split("## Compact form")[1],
+])
+def test_compact_form_shows_the_item_block(text_of):
+    text = text_of()
+    assert "Main work done" in text
+    assert re.search(r"^ +What +\S", text, re.M)
+    assert re.search(r"^ +Why +\S", text, re.M)
+    assert re.search(r"^ +▶ +\S", text, re.M)
+
+
+def test_loose_ends_offers_the_four_answers():
+    text = skill_md("session-loose-ends")
+    assert "do here, spin off, capture, or ignore" in text
+    assert "offering do now, drop, or capture" not in text

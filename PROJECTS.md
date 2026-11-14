@@ -2506,3 +2506,33 @@ plan of record and the conversation — and labeled as such.
 - [x] [P68-T02] `session-status`: amend the Contract rule and See also; add *The verdict* section and a Red Flags row
 - [x] [P68-T03] `just gen`; update `docs/skills/session-status.md`
 - [x] [P68-T04] Bump session 0.15.0 → 0.16.0, quality check, PR, merge (#106; ships in the next `release/next` release)
+
+## [~] Project P69: Close-out small items read clearly, each with a recommended answer (session 0.16.0 → 0.17.0)
+
+**Purpose:** a 🟡 close-out names each small item well enough that the reader can answer it without
+reconstructing context. The trigger: `session-status` printed "S1 — the second review of the
+deletion-design fixes …", which never said which design, why it mattered, or what the choices were.
+
+**Requirements (owner decisions, 2026-11-13):**
+- Headline split: `🟡 Main work done` on one line, `Close out N small items, then this session can close`
+  on the next; the evidence covers the main work only.
+- Every small item, in all three skills (`session-status`, `session-recap`, `session-loose-ends`),
+  renders as an indented block after a blank line: an action title; `What` — the exact artifact by name
+  plus its current state (including whether anything tracks it); `Why` — the consequence if left;
+  `▶` — the recommended answer with a one-clause reason, then the sensible alternatives.
+- Fixed answer words instead of per-item letters (owner chose words over the brief's "lettered
+  options"): **Do here · Spin off · Capture · Ignore** (`Do now` → `Do here`, `Drop` → `Ignore`,
+  `Spin off` added). Ignore always carries its risk. The reply reads e.g. `C1 do here, S1 capture`.
+- Spin off counts as closed once the new session is launched (via `/session-spinoff`); offered only as
+  a prompt, it stays open.
+- `session-status` stays read-only and probe-free: it prints the answers and ends; a reply is a new
+  instruction for the session or `/session-loose-ends`.
+
+**Out of Scope:** unrelated session-* changes; the ✅/❓/⬜ bucket lines, which keep naming items by ID.
+
+- [x] [P69-TS01] Test: the source defines the four answers, the item block (`What`/`Why`/`▶`), and the Spin off rule; `Drop`/`Do now` are gone
+- [x] [P69-TS02] Test: `session-status`'s verdict section and the source's compact form show the item block; loose-ends offers the four answers
+- [x] [P69-T01] Rewrite the 🟡 section, Shape example, Step 2 ID rule, and Compact form in `plugins/session/references/close-verdict.md`
+- [x] [P69-T02] Update `session-status`, `session-recap`, and `session-loose-ends` SKILL.md close-out text and their docs pages
+- [x] [P69-T03] `just gen`; bump session 0.16.0 → 0.17.0; `just all`; `skill-quality` on all three skills at the worktree path
+- [ ] [P69-T04] PR, merge with owner approval

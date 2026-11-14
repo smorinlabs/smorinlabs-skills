@@ -611,11 +611,13 @@ The last part of the `🏁 Close` zone, so the recap still ends inside the 🏁
 bounds: render the session close-out defined in
 `references/_shared/close-verdict.md` — main work versus small items, three
 buckets (done · needs a decision · not done), and a verdict that leans toward
-closing (✅ close · 🟡 main work done, close out N small items? · 🔵 continue).
-It is additive — the `🏁 Close` verdict line and everything above stay exactly
+closing (✅ close · 🟡 main work done, close out N small items · 🔵 continue).
+Under 🟡, each small item is a self-contained block (what, why, recommended
+answer). It is additive — the `🏁 Close` verdict line and everything above stay exactly
 as written; when the two disagree, the close-out names why in one line. Reuse
 the IDs issued above. This skill stays read-only: a 🟡 offer is a
-`/session-loose-ends` launch naming the item IDs, never an action taken here.
+`/session-loose-ends` launch naming each item ID with its recommended answer,
+never an action taken here.
 It renders after the reader-steps block, so the close-out verdict is the
 recap's last line; at the tiny tier a ✅ close-out collapses to one line.
 

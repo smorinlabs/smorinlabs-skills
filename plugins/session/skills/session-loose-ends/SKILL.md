@@ -256,7 +256,8 @@ axis that matters: did anyone agree to it, and who has to move next.
    session's main work done, and should it close? Use the sweep's IDs for the
    three buckets (done · needs a decision · not done). Any *small*
    🧹/📌/💡/❓ item still without a disposition makes the verdict 🟡,
-   offering do now, drop, or capture. Unfinished main work (often a 📌) or an
+   offering do here, spin off, capture, or ignore — one self-contained block
+   per item, each naming its exact artifact. Unfinished main work (often a 📌) or an
    open main-work ❓ makes it 🔵. Scope is this session only. Additive —
    every step above is unchanged; the user's per-item yes to the close-out
    offer is their call, so it covers ❓ and 💡 items too.
@@ -265,12 +266,13 @@ axis that matters: did anyone agree to it, and who has to move next.
    sweep, not the reply). An empty sweep alone does not earn ✅: the verdict
    still follows main-work status. It also renders when the user stops
    after the report. Map the close-out table onto the buckets: 🧹 cleaned →
-   done · ⏭ skipped at the user's request → not done (parked; dropped only
-   if the user says drop) · 🔒 kept because another
+   done · ⏭ skipped at the user's request → not done (parked; closed only
+   if the user says ignore) · 🔒 kept because another
    session owns it → out of scope, left out · 🔒 kept for any other reason
    (e.g. unpushed commits) or 🟡 not yet, gated → not done (main if the gate
    is the main deliverable) · committed to `PROJECTS.md`, an issue, or Linear
-   → captured · handed off as a paste prompt only → still open, so 🟡.
+   → captured · launched with `/session-spinoff` → spun off · handed off as
+   a paste prompt only → still open, so 🟡.
 
 ```harness-kit-shared-references
 close-verdict.md

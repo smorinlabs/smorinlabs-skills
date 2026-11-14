@@ -334,12 +334,38 @@ this skill already read: the plan of record and the conversation. It never
 probes git, PRs, or CI to firm it up.
 
 - The ledger above already shows done and left, so the verdict does not
-  repeat the three buckets. It is the verdict line, one evidence line, and,
-  for 🟡, the small items by ID.
-- The evidence line always ends with its source: `from plan + conversation;
+  repeat the three buckets. It is the verdict, one evidence line about the
+  main work, its source line, and, for 🟡, one block per small item.
+- The source line always reads: `from plan + conversation;
   not checked against git/PR/CI — /session-recap confirms`.
-- No launch prompts: a 🟡 names its items and says `/session-loose-ends`
-  can close them out, in plain text.
+- The ledger tracks planned work only, so a small item usually appears
+  nowhere above. Its block must stand on its own: an action title, `What`
+  (the exact artifact and its current state), `Why` (the consequence if
+  left), and `▶` (one recommended answer of **Do here · Spin off · Capture ·
+  Ignore**, its reason, and the other sensible answers).
+- No launch prompts, and no acting: the skill prints the blocks and a
+  `Reply per item` line, then ends. A reply is a new instruction for the
+  session or `/session-loose-ends`.
+
+```
+🟡 Main work done
+   Close out 2 small items, then this session can close
+
+   Evidence (main work): design merged (PR #3) · P01 merged (PR #4), tagged `v0.1.0` · P02 handed to its own agent
+   Source: from plan + conversation; not checked against git/PR/CI — /session-recap confirms
+
+     C1  Remove the P01 worktree
+         What  `../proj-p01` on branch `feat/p01`, left behind after PR #4 merged; clean
+         Why   nothing uses it, and it blocks deleting `feat/p01`
+         ▶     Do here — one command, safe (merged, clean)      Else: Ignore (risk: clutter only)
+
+     S1  Get a second review of the deletion-design fixes
+         What  `design.md` §9, fixed in commit `95c9592`; reviewed once; mentioned only in this conversation, nothing tracks it
+         Why   P05 builds on §9, so an error in the fixes would carry into P05's code
+         ▶     Capture — a gating task on P05 in PROJECTS.md      Else: Spin off · Do here · Ignore (risk: a §9 flaw reaches P05)
+
+   Reply per item, e.g. "C1 do here, S1 capture".
+```
 
 ```harness-kit-shared-references
 close-verdict.md
