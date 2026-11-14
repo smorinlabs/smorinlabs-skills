@@ -328,6 +328,21 @@ def test_check_launch_flags_wrong_dir_and_agent():
     assert got["ok"] is False and got["cwd_ok"] is False and got["agent_ok"] is False
 
 
+# ── P73-TS07: Muse's launcher execs muse-bin-<version>, so that is the foreground argv0 ──
+
+
+def test_detect_agent_recognises_the_versioned_muse_binary():
+    proc = {"foreground": {"argv0": "/opt/tools/bin/muse-bin-1.4.20-R8619.1"}}
+    assert sp.detect_agent(proc) == "muse"
+
+
+def test_check_launch_accepts_a_muse_launch():
+    proc = {"foreground": {"argv0": "/opt/tools/bin/muse-bin-1.4.20-R8619.1",
+                           "cwd": "/code/shelf-shelf-tags"}}
+    got = sp.check_launch(proc, "/code/shelf-shelf-tags", "muse")
+    assert got["ok"] is True and got["agent"] == "muse" and got["agent_ok"] is True
+
+
 # ── P66-TS07: transcript evidence + label fact (sessions started in a parent dir) ──
 
 

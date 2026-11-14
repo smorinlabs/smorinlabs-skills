@@ -115,6 +115,7 @@ def slugify(text: str, max_len: int = 40) -> str:
 def detect_agent(process: dict) -> str | None:
     argv0 = (process.get("foreground") or {}).get("argv0") or ""
     name = os.path.basename(argv0.lstrip("-"))
+    name = name.split("-bin-")[0]  # Muse runs as muse-bin-<version>
     return name if name in AGENTS else None
 
 

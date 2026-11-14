@@ -2621,6 +2621,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-TS04] Test: launch command keeps name and directory, omits an auto-generated name, same agent resumes the same ID
 - [x] [P73-TS05] Test: the handoff never resumes while the old agent is alive, and never resumes unreleased
 - [x] [P73-TS06] Test: the result check (same agent, same PID, same conversation ID)
+- [x] [P73-TS07] Test: `spinoff-plan` recognises Muse's real process name, `muse-bin-<version>`
 - [x] [P73-T01] `scripts/session-move` (plan, arm, go, abort, handoff) and `SKILL.md`
 - [x] [P73-T02] Live checks of the helper on throwaway conversations, 2026-11-14: Claude Code (move, abort, release
       while busy), Codex, and Muse each resumed the same conversation in a new session with the old window closed.
@@ -2631,4 +2632,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-T04] Bump session 0.17.1 → 0.18.0; `just gen`; `just all`
 - [ ] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper: smorinlabs/lost-sessions PR #26 (`5cd47aa`), open
 - [ ] [P73-T06] Codex global instructions carry the same Rex rule as Claude Code's: smorin/smorin-bootstrap PR #80 (`bdd16b3`), open
-- [ ] [P73-T07] PR, merge with owner approval; then re-point the dev placements at the main checkout
+- [ ] [P73-T07] PR #113, merge with owner approval; then re-point the dev placements at the main checkout
+- [x] [P73-T08] `session-spinoff`'s `verify-launch --agent muse` accepts a real Muse launch. Found during P73-T02:
+      Muse's launcher execs `muse-bin-<version>`, which `detect_agent` compared against the bare name `muse`,
+      so a successful launch reported `agent_ok: false`.
