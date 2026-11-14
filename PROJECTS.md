@@ -2537,7 +2537,7 @@ deletion-design fixes …", which never said which design, why it mattered, or w
 - [x] [P69-T03] `just gen`; bump session 0.16.0 → 0.17.0; `just all`; `skill-quality` on all three skills at the worktree path
 - [x] [P69-T04] PR, merge with owner approval (#107; ships in the next `release/next` release)
 
-## [~] Project P70: muse-github-setup fixes from the lost-sessions test run (muse-github v0.2.0 → v0.3.0)
+## [x] Project P70: muse-github-setup fixes from the lost-sessions test run (muse-github v0.2.0 → v0.3.0)
 
 **Goal/Requirement**: Fold the T8 lost-sessions gotchas into the skill, and replace the
 `MUSE_CI_GITHUB_MEMBERS_TOKEN` PAT with a Members-read GitHub App whose token each
@@ -2550,4 +2550,26 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P70-TS01] Both templates mint the members token from `MUSE_CI_MEMBERS_APP_*` via SHA-pinned `actions/create-github-app-token` with `permission-members: read`; App secrets appear only in the mint step
 - [x] [P70-T01] Template mint step; security, secrets, and acceptance docs; SKILL.md prerequisites
 - [x] [P70-T02] Gotcha-driven doc edits (no-team branch, policies API, single maintainer, test path, dry-run probe, key scope)
-- [ ] [P70-T03] Pass `just all` and skill-quality, open the PR, merge
+- [x] [P70-T03] Pass `just all` and skill-quality, open the PR, merge
+
+## [~] Project P71: muse-github-setup gotchas G11–G14 (muse-github v0.3.0 → v0.4.0)
+
+**Goal/Requirement**: Fix four gaps found installing Muse reviews on `smorinlabs/lost-sessions`
+(gotcha log `~/c/prompts/T8-output/muse-skill-gotchas.md`).
+- G11: the vendored `muse_ci.py` fails a target's strict `ruff` hooks; exclude it, never edit it.
+- G12: re-rendering drops the hand-written CODEOWNERS; the installer writes a marked block.
+- G13: CodeQL `py/clear-text-storage-sensitive-data` false positive on the `config.json` write.
+- G14: a fresh target worktree needs hook dependencies (`bun install`) before its first commit.
+
+**Out of Scope**
+- Editing `smorinlabs/lost-sessions`.
+- Personal-account repository support; splitting `MUSE_CI_ENABLED` per workflow.
+
+### Tests & Tasks
+- [x] [P71-TS01] `--codeowner` creates `.github/CODEOWNERS`, appends to the existing file GitHub reads (`.github/`, root, `docs/`) without shadowing it, also owns that CODEOWNERS file, is idempotent, and refuses a conflicting or duplicate block, several CODEOWNERS files, or a malformed owner
+- [x] [P71-TS02] The prepared CI `config.json` pins `apiKey` to exactly `{env:META_MUSE_CI_API_KEY}`
+- [x] [P71-T01] `install.py` requires `--codeowner` or `--no-codeowner` (owner decision 2026-11-13, Q1.A)
+- [x] [P71-T02] Rename the helper's `SECRET` constant to `PROVIDER_ENV`. The lost-sessions SARIF traced all four flow paths to that assignment (CodeQL's sensitive-name heuristic). Not proven with CodeQL locally; the next CodeQL run on a re-rendered target confirms it
+- [x] [P71-T03] SKILL.md step 4 and acceptance steps 1–2: hook dependencies first (G14), exclude the vendored helper from lint/format hooks (G11), `--codeowner` (G12)
+- [x] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval
+- [ ] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)

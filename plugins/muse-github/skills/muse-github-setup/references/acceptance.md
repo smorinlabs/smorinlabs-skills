@@ -4,14 +4,22 @@
 
 1. Verify the exact repository and scope. Work in an isolated worktree based on
    the current default branch. Read existing configuration before applying the
-   installer. `../scripts/install.py WORKTREE --organization OWNER [--with-fixes]`
+   installer. `../scripts/install.py WORKTREE --organization OWNER --codeowner REVIEWER [--with-fixes]`
    prints the local plan; append `--apply` to write it. `WORKTREE` and `OWNER`
-   come from repository discovery. Resolve the script from the installed skill.
+   come from repository discovery; `REVIEWER` is the owner's `@login` or
+   `@organization/team`, confirmed with the owner. Use `--no-codeowner` in its
+   place only when the owner manages CODEOWNERS another way. Resolve the script
+   from the installed skill.
 2. Inspect every new or changed file. Run `actionlint` on the rendered workflows.
+   Run the target's own lint and format hooks on the staged files. Exclude the
+   vendored `.github/scripts/muse_ci.py` from Python linters and formatters
+   instead of editing it, and revert any autofix to it.
    Preserve existing project instructions, OpenCode settings, CODEOWNERS entries,
-   and unrelated changes. Add human ownership for `.github/workflows/opencode-*.yml`,
-   `.github/scripts/muse_ci.py`, `.opencode/muse-ci/`, `opencode.json`, and the
-   security section of `AGENTS.md`. CODEOWNERS alone is not enforcement; confirm
+   and unrelated changes. `--codeowner` adds human ownership for
+   `.github/workflows/opencode-*.yml`, `.github/scripts/muse_ci.py`,
+   `.opencode/muse-ci/`, `opencode.json`, `AGENTS.md`, and the CODEOWNERS file
+   itself; confirm the block
+   landed in the CODEOWNERS file GitHub reads. CODEOWNERS alone is not enforcement; confirm
    branch rules require those reviews and protect the default branch from the bot.
    Read the rules that actually apply with `gh api repos/OWNER/REPO/rules/branches/BRANCH`:
    organization rulesets apply there even when the classic
