@@ -58,7 +58,20 @@ RESUME = {"claude": ["claude", "--resume"], "codex": ["codex", "resume"],
 # literal as session-spinoff's SHELL_FALLBACK; a test holds the two equal.
 SHELL_FALLBACK = '"$@"; exec "$0" -il'
 
-TURN_ENDED = ("idle", "shell")  # Claude Code registry statuses with no turn in flight
+# Shells that accept SHELL_FALLBACK (Bourne syntax) and the -ilc / -il flags; each was run
+# with the launch form. fish, tcsh, and nushell reject it before the agent starts. The same
+# rule as session-spinoff's launch_shell; a test holds the two equal.
+POSIX_SHELLS = ("zsh", "bash", "sh", "dash", "ksh")
+
+
+def launch_shell(env_shell: str | None) -> str:
+    """The shell that runs SHELL_FALLBACK: $SHELL when it is Bourne-family, else /bin/zsh."""
+    if env_shell and os.path.basename(env_shell) in POSIX_SHELLS:
+        return env_shell
+    return "/bin/zsh"
+
+
+TURN_ENDED =("idle", "shell")  # Claude Code registry statuses with no turn in flight
 QUIET_SECONDS = 6               # Codex and Muse have no status: a transcript quiet this long
 AUTO_LABEL = re.compile(r"^Window [0-9a-f]{8}$")  # the name Rex gives an unnamed window
 POLL = 0.5
@@ -168,7 +181,7 @@ def match_conversation(rows: list[dict], pid: int | None, cwd: str | None,
 
 def build_launch(plan: dict, python: str, script: str, release_file: str) -> list[str]:
     """The Rex command that creates the destination window running the handoff."""
-    shell = os.environ.get("SHELL") or "/bin/zsh"
+    shell = launch_shell(os.environ.get("SHELL"))
     src, dst = plan["source"], plan["destination"]
     handoff = [python, script, "handoff", "--agent", plan["agent"], "--old-pid", str(plan["pid"]),
                "--old-session", src["session_id"], "--old-window", src["window_id"],

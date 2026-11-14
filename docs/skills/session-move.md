@@ -29,7 +29,8 @@ resume the conversation. If the old agent does not exit, nothing resumes.
 The new window runs the agent inside your login shell
 (`--shell=none -- "$SHELL" -ilc '"$@"; exec "$0" -il' "$SHELL" …`), the same
 launch form `session-spinoff` uses, so quitting the agent leaves the tab open
-at a normal shell prompt.
+at a normal shell prompt. When `$SHELL` is not zsh, bash, sh, dash, or ksh
+(fish and tcsh reject that wrapper), the new window uses `/bin/zsh`.
 
 When the agent moves its own window, the tab closes as soon as its final
 message ends. The waiting program then tries to switch the Rex app to the new

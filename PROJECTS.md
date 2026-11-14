@@ -2622,6 +2622,8 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-TS05] Test: the handoff never resumes while the old agent is alive, and never resumes unreleased
 - [x] [P73-TS06] Test: the result check (same agent, same PID, same conversation ID)
 - [x] [P73-TS07] Test: `spinoff-plan` recognises Muse's real process name, `muse-bin-<version>`
+- [x] [P73-TS08] Test: a non-Bourne `$SHELL` (fish, tcsh, nushell, unset) never receives the wrapper; `session-move`
+      and `spinoff-plan` choose the shell by the same rule
 - [x] [P73-T01] `scripts/session-move` (plan, arm, go, abort, handoff) and `SKILL.md`
 - [x] [P73-T02] Live checks of the helper on throwaway conversations, 2026-11-14: Claude Code (move, abort, release
       while busy), Codex, and Muse each resumed the same conversation in a new session with the old window closed.
@@ -2636,3 +2638,8 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-T08] `session-spinoff`'s `verify-launch --agent muse` accepts a real Muse launch. Found during P73-T02:
       Muse's launcher execs `muse-bin-<version>`, which `detect_agent` compared against the bare name `muse`,
       so a successful launch reported `agent_ok: false`.
+- [x] [P73-T09] The launch wrapper runs under a Bourne-family shell (owner decision 2026-11-14, option B). Review of
+      smorinlabs/lost-sessions PR #26 found, and a run under `/bin/tcsh` confirmed, that a non-Bourne `$SHELL`
+      rejects `'"$@"; exec "$0" -il'` before the agent starts. `session-move` and `spinoff-plan` now use `$SHELL`
+      only when it is zsh, bash, sh, dash, or ksh, and `/bin/zsh` otherwise. The wrapper text is unchanged.
+      The same guard goes into `lost-sessions` under P73-T05.

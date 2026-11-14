@@ -38,7 +38,8 @@ resumes the same conversation, and the old window closes.
 - **The new window falls back to a shell.** The helper launches through
   `--shell=none -- "$SHELL" -ilc '"$@"; exec "$0" -il' "$SHELL" …`, the same
   launch form `session-spinoff` uses, so quitting the agent leaves a prompt
-  instead of closing the tab.
+  instead of closing the tab. When `$SHELL` is not zsh, bash, sh, dash, or
+  ksh (fish and tcsh reject that wrapper), the helper uses `/bin/zsh`.
 - **Prompts in the new window belong to the user.** If the resumed agent shows
   an update or folder-trust prompt, report it; never answer it.
 - **Only this move's own leftovers are removed.** An emptied source session is

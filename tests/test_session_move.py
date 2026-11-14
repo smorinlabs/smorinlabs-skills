@@ -62,6 +62,14 @@ def test_wrapper_is_the_same_literal_session_spinoff_uses():
     assert sm.SHELL_FALLBACK == spinoff.SHELL_FALLBACK
 
 
+def test_the_shell_that_runs_the_wrapper_is_chosen_as_session_spinoff_chooses_it():
+    spinoff = load_module("spinoff_plan_for_move", SPINOFF)
+    assert sm.POSIX_SHELLS == spinoff.POSIX_SHELLS
+    for env_shell in ("/bin/zsh", "/opt/homebrew/bin/bash", "/bin/ksh",
+                      "/opt/homebrew/bin/fish", "/bin/tcsh", "", None):
+        assert sm.launch_shell(env_shell) == spinoff.launch_shell(env_shell)
+
+
 # ── P73-TS02: what can move ──────────────────────────────────────────────
 
 
@@ -167,6 +175,14 @@ WRAPPED = ["-c", "/work/repo", "--shell=none", "--json", "--",
 
 def test_existing_session_keeps_the_window_name_and_directory(monkeypatch):
     assert launch(plan(), monkeypatch) == [
+        "rex", "window", "new", "-s", "session:bbb", "security-review", "--focus=false",
+        *WRAPPED, *HANDOFF, "--", "claude", "--resume", "conv-1"]
+
+
+def test_a_non_bourne_shell_never_receives_the_wrapper(monkeypatch):
+    # fish and tcsh reject '"$@"; exec "$0" -il', so /bin/zsh runs it instead (P73-TS08).
+    monkeypatch.setenv("SHELL", "/opt/homebrew/bin/fish")
+    assert sm.build_launch(plan(), "/py", "/skill/session-move", "/tmp/r.release") == [
         "rex", "window", "new", "-s", "session:bbb", "security-review", "--focus=false",
         *WRAPPED, *HANDOFF, "--", "claude", "--resume", "conv-1"]
 
