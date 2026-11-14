@@ -110,10 +110,14 @@ whether the skill can act:
   it records. The user's answer to a specific item is the user's call, so it
   also covers ❓ and 💡 items the sweep otherwise marks report-only — for
   example, capturing an `S#` idea with `/project-add` after the user says
-  capture.
+  capture. When the answers arrive from another run (a pasted prompt, or a
+  `session-status` reply), it matches each item by the artifact named, never
+  by the ID alone: its own sweep issues its own IDs. If no item matches that
+  artifact, it asks before acting.
 - **Read-only skill** (`session-recap`) never executes. Its offer is a launch
-  with the recommended answers filled in, for the user to edit:
-  `▶ Prompt — paste this to close out N items: /session-loose-ends "C1 do here, S1 capture"`.
+  with the recommended answers filled in, for the user to edit. Each item
+  names its artifact next to its ID, because the new run renumbers:
+  `▶ Prompt — paste this to close out N items: /session-loose-ends "C1 (worktree ../proj-p01) do here; S1 (second review of design.md §9 fixes) capture"`.
 
 A prompt handed to the user (a paste-ready `▶ Prompt`, or a spin-off that was
 offered but not launched) is not a durable capture. An item whose only home is
@@ -163,7 +167,9 @@ stand on its own.
 
 It never acts and never offers to act: it prints the answers and ends. A reply
 such as `S1 capture` is a new instruction, carried out by the session or by
-`/session-loose-ends`, not by the context-only skill.
+`/session-loose-ends`, not by the context-only skill. Handed to
+`/session-loose-ends`, the reply names each item's artifact as well as its ID,
+because that run issues its own IDs.
 
 ```
 🟡 Main work done

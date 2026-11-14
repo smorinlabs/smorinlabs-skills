@@ -121,3 +121,9 @@ def test_loose_ends_offers_the_four_answers():
     text = skill_md("session-loose-ends")
     assert "do here, spin off, capture, or ignore" in text
     assert "offering do now, drop, or capture" not in text
+
+
+def test_handoff_binds_ids_to_artifacts():
+    text = SOURCE.read_text()
+    assert "never\n  by the ID alone" in text or "never by the ID alone" in text.replace("\n  ", " ")
+    assert '/session-loose-ends "C1 (worktree ../proj-p01) do here;' in text
