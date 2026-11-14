@@ -1,6 +1,6 @@
 # session-spinoff
 
-The launcher of the session sextet. An idea comes up mid-session — a bug in
+The launcher of the session septet. An idea comes up mid-session — a bug in
 another repo, a feature worth building, something that needs fixing — and you
 don't want it to derail what you're doing or fill your context window.
 `session-spinoff` writes a self-contained brief for that idea (using
@@ -33,7 +33,8 @@ commands — run through the bundled stdlib `scripts/spinoff-plan` helper.
 **Triggers on:** "spin this off", "launch this in Rex", "start a new session
 for this in <repo>", "open a new agent for that bug", or any ask to work a side
 idea in its own session. NOT continuing the current work elsewhere
-(`session-handoff`), and not forking this conversation (`agent-fork`).
+(`session-handoff`), not forking this conversation (`agent-fork`), and not
+moving a running conversation to another Rex session (`session-move`).
 
 **Arguments:** `[idea] [--new | --session <label|id>] [--name <session-name>]
 [--repo <name|path>] [--claude | --codex | --muse] [--dry-run]`

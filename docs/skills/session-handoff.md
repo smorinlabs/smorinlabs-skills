@@ -31,7 +31,8 @@ one-line effectiveness note each run.
 **Triggers on:** "hand this off", "write a handoff", "start a fresh/new session
 with this context", "continue this in a new window/session", "pick this up on
 another machine", "pass the baton". Not backward orientation ("where was I" —
-that's `session-recap`) and not in-place cleanup (`session-loose-ends`).
+that's `session-recap`), not in-place cleanup (`session-loose-ends`), and not
+moving this same conversation to another Rex session (`session-move`).
 **Arguments:** `--file` / `--inline` force the delivery mode; an optional
 free-text outcome hint seeds scoping.
 

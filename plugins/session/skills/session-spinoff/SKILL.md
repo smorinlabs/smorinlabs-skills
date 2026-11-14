@@ -3,7 +3,7 @@ name: session-spinoff
 allowed-tools: Bash, Read, Skill, AskUserQuestion
 argument-hint: "[idea] [--new | --session <label|id>] [--name <session-name>] [--repo <name|path>] [--claude | --codex | --muse] [--dry-run]"
 arguments: [idea]
-description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), or general Rex tab and session control (rex).
+description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), moving a running conversation to another Rex session (session-move), or general Rex tab and session control (rex).
 ---
 
 # session-spinoff

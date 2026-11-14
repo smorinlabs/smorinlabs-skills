@@ -1,0 +1,585 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""session-move — helper for the session-move skill.
+
+Rex cannot move a window between sessions, so a move recreates it: a new window
+in the destination session takes over the same agent conversation, and the old
+window closes. Two live copies of one conversation would both write to its
+transcript, so the new window waits until the old agent is gone before it
+resumes.
+
+Verbs (JSON on stdout; a refusal prints to stderr and exits 2):
+
+  plan --to DEST [--session S] [--window W] [--conversation ID]
+      Read-only. Describe the move: the source window (default: the one this
+      runs in), its agent, conversation ID, directory and name, and the
+      destination session (an existing one, or one to create). Refuses when
+      the window cannot move, and says why. --conversation names the
+      conversation when several live ones were started in the same directory.
+  arm                (plan JSON on stdin)
+      Create the destination window. It starts `handoff`, which waits. Checks
+      that the handoff runs on the same computer, in the same directory, under
+      the same window name. Exit 3 when it does not (the new window is removed).
+  go [--wait]        (arm JSON on stdin)
+      Release the handoff. With --wait, block until the conversation runs in
+      the destination window and report the check. Exit 3 when it does not.
+  abort              (arm JSON on stdin)
+      Remove an armed destination window that has not resumed.
+  handoff ...        (internal: the destination window's program)
+      Wait for the release and for the old agent's turn to end, close the old
+      window, wait for the old agent to exit, then exec the resume command.
+
+Stdlib only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+AGENTS = ("claude", "codex", "muse")
+NAMES = {"claude": "Claude Code", "codex": "Codex", "muse": "Muse"}
+RESUME = {"claude": ["claude", "--resume"], "codex": ["codex", "resume"],
+          "muse": ["muse", "resume"]}
+
+# Run the command ("$@"), then replace this shell with an interactive login shell ("$0" is
+# the shell's own path), so a tab stays open at a prompt when its agent exits. The same
+# literal as session-spinoff's SHELL_FALLBACK; a test holds the two equal.
+SHELL_FALLBACK = '"$@"; exec "$0" -il'
+
+TURN_ENDED = ("idle", "shell")  # Claude Code registry statuses with no turn in flight
+QUIET_SECONDS = 6               # Codex and Muse have no status: a transcript quiet this long
+AUTO_LABEL = re.compile(r"^Window [0-9a-f]{8}$")  # the name Rex gives an unnamed window
+POLL = 0.5
+ARM_TIMEOUT, RELEASE_TIMEOUT, IDLE_TIMEOUT, EXIT_TIMEOUT, RESUME_TIMEOUT = 20, 600, 300, 20, 90
+
+
+class MoveRefusal(ValueError):
+    """A move the skill must refuse, with the reason."""
+
+
+# ── pure rules ───────────────────────────────────────────────────────────
+
+
+def detect_agent(process: dict) -> str | None:
+    argv0 = (process.get("foreground") or {}).get("argv0") or ""
+    name = os.path.basename(argv0.lstrip("-"))
+    name = name.split("-bin-")[0]  # Muse runs as muse-bin-<version>
+    return name if name in AGENTS else None
+
+
+def is_auto_label(label: str | None) -> bool:
+    return not label or bool(AUTO_LABEL.match(label))
+
+
+def resume_argv(agent: str, conversation_id: str) -> list[str]:
+    return [*RESUME[agent], conversation_id]
+
+
+def refusals(f: dict) -> list[str]:
+    """Why this window cannot move; empty when it can."""
+    out = []
+    if not f["source_host"] or not f["server_host"]:
+        out.append("cannot confirm the window runs on this computer (Rex reported no host ID)")
+    elif f["source_host"] != f["server_host"]:
+        out.append(f"the window runs on a different computer (host {f['source_host']}) than this "
+                   f"Rex server (host {f['server_host']}); moving across computers is out of scope")
+    if f["panes"] != 1:
+        out.append(f"the window has {f['panes']} panes; only a window with exactly one pane can move")
+    agent = f["agent"]
+    if not agent:
+        out.append("the window is not running Claude Code, Codex, or Muse "
+                   f"(foreground: {f.get('foreground') or 'unknown'})")
+    elif not f["conversation_id"]:
+        out.append(f"cannot tell which {NAMES[agent]} conversation the window runs "
+                   f"({f.get('identity_note') or 'no match'})")
+    elif not f["self"]:
+        if agent == "claude":
+            if f["status"] == "shell":
+                out.append("the agent has a background shell running, which the move would end "
+                           "(status: shell)")
+            elif f["status"] != "idle":
+                out.append(f"the agent is not idle (status: {f['status']}); moving it now would "
+                           "cut off its current turn")
+        elif f["quiet_seconds"] is None:
+            out.append(f"cannot tell whether the {NAMES[agent]} agent is idle (no transcript found)")
+        elif f["quiet_seconds"] < QUIET_SECONDS:
+            out.append(f"the agent's transcript changed {f['quiet_seconds']:.0f}s ago; wait until "
+                       "it is idle")
+    return out
+
+
+def resolve_destination(sessions: list[dict], to: str, source_session: str) -> dict:
+    hits = ([s for s in sessions if s.get("session_id") == to]
+            or [s for s in sessions if s.get("label") == to])
+    if len(hits) > 1:
+        raise MoveRefusal(f"{len(hits)} sessions are labelled {to!r}; pass the session ID instead")
+    if hits:
+        if hits[0]["session_id"] == source_session:
+            raise MoveRefusal("the window is already in that session")
+        return {"exists": True, "session_id": hits[0]["session_id"],
+                "label": hits[0].get("label"), "near": []}
+    if to.startswith("session:"):
+        raise MoveRefusal(f"no session has the ID {to}")
+    low = to.lower()
+    near = [s["label"] for s in sessions if s.get("label")
+            and (s["label"].lower() == low
+                 or (min(len(low), len(s["label"])) >= 3
+                     and (low in s["label"].lower() or s["label"].lower() in low)))]
+    return {"exists": False, "session_id": None, "label": to, "near": near}
+
+
+def match_conversation(rows: list[dict], pid: int | None, cwd: str | None,
+                       wanted: str | None = None) -> tuple[dict | None, str]:
+    """Pick the live inventory row for the agent in a window.
+
+    Muse holds its transcript lock itself, so its row carries the window's PID.
+    Codex transcripts are locked by a shared app-server, so no row carries the
+    terminal's PID; the fallback is the one live conversation started in the
+    window's directory. `wanted` (--conversation) settles a tie.
+    """
+    row = next((r for r in rows if pid and r.get("pid") == pid), None)
+    if row:
+        return row, ""
+    here = os.path.realpath(cwd) if cwd else None
+    same_dir = [r for r in rows if r.get("live") == "yes" and r.get("spawn_dir")
+                and os.path.realpath(r["spawn_dir"]) == here]
+    if wanted:
+        same_dir = [r for r in same_dir if r.get("id") == wanted]
+    if len(same_dir) == 1:
+        return same_dir[0], ""
+    if not same_dir:
+        return None, f"no live conversation was started in {cwd}"
+    ids = ", ".join(r.get("id", "?") for r in same_dir)
+    return None, (f"{len(same_dir)} live conversations were started in {cwd}; "
+                  f"pass --conversation with one of: {ids}")
+
+
+def build_launch(plan: dict, python: str, script: str, release_file: str) -> list[str]:
+    """The Rex command that creates the destination window running the handoff."""
+    shell = os.environ.get("SHELL") or "/bin/zsh"
+    src, dst = plan["source"], plan["destination"]
+    handoff = [python, script, "handoff", "--agent", plan["agent"], "--old-pid", str(plan["pid"]),
+               "--old-session", src["session_id"], "--old-window", src["window_id"],
+               "--release-file", release_file]
+    if plan.get("transcript"):
+        handoff += ["--transcript", plan["transcript"]]
+    if plan["self"]:
+        handoff.append("--follow")
+    wrapped = ["-c", plan["cwd"], "--shell=none", "--json", "--",
+               shell, "-ilc", SHELL_FALLBACK, shell, *handoff, "--", *plan["resume_argv"]]
+    label = [] if src["label_auto"] else [src["label"]]  # an auto-generated name is not copied
+    if dst["exists"]:
+        return ["rex", "window", "new", "-s", dst["session_id"], *label, "--focus=false", *wrapped]
+    return ["rex", "new", dst["label"], *(["--window", *label] if label else []), *wrapped]
+
+
+def check_resumed(armed: dict, process: dict, observed_id: str | None) -> dict:
+    """Is the destination window now running the same agent on the same conversation?
+
+    The handoff execs the agent, so the agent keeps the handoff's PID.
+    observed_id is the conversation that PID is recorded as running: Claude
+    Code and Muse record one, Codex does not, so for Codex same_conversation
+    stays None.
+    """
+    fg = process.get("foreground") or {}
+    resumed = detect_agent(process) == armed["agent"] and fg.get("pid") == armed["handoff_pid"]
+    same = observed_id == armed["conversation_id"] if resumed and observed_id else None
+    return {"resumed": resumed, "same_conversation": same}
+
+
+# ── the handoff: runs in the destination window ──────────────────────────
+
+
+def _wait(ports, cond, timeout: float) -> bool:
+    end = ports.now() + timeout
+    while True:
+        if cond():
+            return True
+        if ports.now() >= end:
+            return False
+        ports.sleep(POLL)
+
+
+def turn_ended(cfg: dict, ports) -> bool:
+    if cfg["agent"] == "claude":
+        return ports.claude_status(cfg["old_pid"]) in TURN_ENDED
+    if cfg.get("transcript"):
+        age = ports.mtime_age(cfg["transcript"])
+        return age is not None and age >= QUIET_SECONDS
+    return True
+
+
+def run_handoff(cfg: dict, ports) -> int:
+    pid, resume = cfg["old_pid"], shlex.join(cfg["resume_argv"])
+    ports.say(f"session-move: waiting to take over the {NAMES[cfg['agent']]} conversation "
+              f"from the old window (pid {pid}).")
+    _wait(ports, lambda: ports.exists(cfg["release_file"]) or not ports.alive(pid), RELEASE_TIMEOUT)
+    if not ports.exists(cfg["release_file"]):
+        # Without the release, resuming here would be a surprise: the move may have been abandoned.
+        ports.say("session-move: the move was not released, so nothing was changed. "
+                  f"To resume here by hand once the old agent has exited, run: {resume}")
+        return 1
+    if not _wait(ports, lambda: not ports.alive(pid) or turn_ended(cfg, ports), IDLE_TIMEOUT):
+        ports.say("session-move: the old agent is still working, so its window was left open "
+                  "and nothing was changed.")
+        return 1
+    ports.close_window(cfg["old_session"], cfg["old_window"])
+    if not _wait(ports, lambda: not ports.alive(pid), EXIT_TIMEOUT):
+        ports.say(f"session-move: the old agent (pid {pid}) did not exit. Not resuming, because "
+                  "two copies would write to one conversation.")
+        return 1
+    if cfg.get("follow"):
+        ports.follow()
+    ports.say(f"session-move: resuming with: {resume}")
+    return ports.exec(cfg["resume_argv"])
+
+
+class Ports:
+    """The outside world for run_handoff; tests replace it with a fake."""
+
+    def now(self) -> float:
+        return time.monotonic()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
+    def alive(self, pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def exists(self, path: str) -> bool:
+        return os.path.exists(path)
+
+    def claude_status(self, pid: int) -> str | None:
+        return (claude_registry(pid) or {}).get("status")
+
+    def mtime_age(self, path: str) -> float | None:
+        try:
+            return time.time() - os.path.getmtime(path)
+        except OSError:
+            return None
+
+    def close_window(self, session: str, window: str) -> None:
+        subprocess.run(["rex", "window", "close", "-s", session, window],
+                       capture_output=True, timeout=15, check=False)
+
+    def follow(self) -> None:
+        """Switch the Rex app to this window. Skipped unless exactly one app is connected;
+        the app may refuse (its Remote Control setting), which is not an error."""
+        session, block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+        window = next((b["window_id"] for b in list_blocks(session or "")
+                       if b.get("block_id") == block), None)
+        client = single_app_client()
+        if session and window and client:
+            subprocess.run(jump_command(session, window, client), capture_output=True,
+                           timeout=15, check=False)
+
+    def say(self, text: str) -> None:
+        print(text, flush=True)
+
+    def exec(self, argv: list[str]) -> int:
+        try:
+            os.execvp(argv[0], argv)
+        except OSError as exc:
+            self.say(f"session-move: could not start {argv[0]} ({exc}). Run it by hand: "
+                     f"{shlex.join(argv)}")
+        return 127
+
+
+# ── reading Rex and the agents ───────────────────────────────────────────
+
+
+def _run_json(argv: list[str]) -> dict | None:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def list_blocks(session: str) -> list[dict]:
+    data = _run_json(["rex", "api", "call", "-s", session, "session.list_blocks", "{}"]) or {}
+    return data.get("blocks", [])
+
+
+def list_windows(session: str) -> list[dict]:
+    return (_run_json(["rex", "window", "list", "-s", session, "--json"]) or {}).get("windows", [])
+
+
+def block_process(session: str, block: str) -> dict:
+    return _run_json(["rex", "block", "call", "-s", session, "-b", block, "process"]) or {}
+
+
+def claude_registry(pid: int) -> dict | None:
+    try:
+        return json.loads((Path.home() / ".claude" / "sessions" / f"{pid}.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def inventory_rows(agent: str) -> tuple[list[dict], str]:
+    """Live Codex or Muse conversations, via the sibling session-inventory."""
+    inv = (Path(__file__).resolve().parent.parent.parent
+           / "session-agent-list" / "scripts" / "session-inventory")
+    if not inv.exists():
+        return [], f"{inv} not found"
+    data = _run_json([sys.executable, str(inv), "list", "--live", "--json", "--tool", agent])
+    if data is None:
+        return [], "session-inventory failed"
+    return (data if isinstance(data, list) else data.get("sessions", [])), ""
+
+
+def single_app_client() -> str | None:
+    clients = (_run_json(["rex", "client", "ls", "--json"]) or {}).get("clients", [])
+    apps = [c["client_id"] for c in clients if (c.get("info") or {}).get("kind") == "app"]
+    return apps[0] if len(apps) == 1 else None
+
+
+def jump_command(session_id: str, window_id: str, client: str | None = None) -> list[str]:
+    """The command that switches a Rex app to a window; -C names the app when known."""
+    return ["rex", *(["-C", client] if client else []), "do", "session.select",
+            f"session_id={session_id}", f"window_id={window_id}"]
+
+
+def make_plan(to: str, session_arg: str | None, window_arg: str | None,
+              conversation_arg: str | None = None) -> dict:
+    whoami = _run_json(["rex", "whoami", "--json"])
+    if whoami is None:
+        raise MoveRefusal("cannot reach the Rex server (`rex whoami --json` failed)")
+    sessions = (_run_json(["rex", "session", "list", "--json"]) or {}).get("sessions", [])
+    own_session, own_block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+
+    session_id = own_session
+    if session_arg:
+        match = [s for s in sessions if session_arg in (s.get("session_id"), s.get("label"))]
+        if len(match) != 1:
+            raise MoveRefusal(f"{len(match)} sessions match {session_arg!r}")
+        session_id = match[0]["session_id"]
+    if not session_id:
+        raise MoveRefusal("not running inside Rex (REX_SESSION is unset); pass --session and --window")
+    blocks, windows = list_blocks(session_id), list_windows(session_id)
+    if window_arg:
+        match = [w for w in windows if window_arg in (w.get("window_id"), w.get("label"))]
+        if len(match) != 1:
+            raise MoveRefusal(f"{len(match)} windows match {window_arg!r} in that session")
+        window_id = match[0]["window_id"]
+    else:
+        window_id = next((b["window_id"] for b in blocks if b.get("block_id") == own_block), None)
+        if not window_id:
+            raise MoveRefusal("cannot find this terminal's window (REX_BLOCK is unset or stale)")
+    panes = [b for b in blocks if b.get("window_id") == window_id]
+    block = panes[0] if panes else {}
+    process = block_process(session_id, block["block_id"]) if panes else {}
+    fg = process.get("foreground") or {}
+    agent, pid = detect_agent(process), fg.get("pid")
+    label = next((w.get("label") for w in windows if w.get("window_id") == window_id), None)
+
+    conversation_id = status = transcript = quiet = None
+    note = ""
+    if agent == "claude":
+        reg = claude_registry(pid) or {}
+        conversation_id, status = reg.get("sessionId"), reg.get("status")
+        note = "" if reg else f"no ~/.claude/sessions/{pid}.json"
+    elif agent:
+        rows, note = inventory_rows(agent)
+        row, note = match_conversation(rows, pid, fg.get("cwd"), conversation_arg) if rows \
+            else (None, note or f"session-inventory lists no live {agent} conversation")
+        if row:
+            conversation_id, transcript = row.get("id"), row.get("transcript")
+            quiet = Ports().mtime_age(transcript) if transcript else None
+
+    is_self = bool(own_block) and block.get("block_id") == own_block
+    reasons = refusals({
+        "self": is_self, "panes": len(panes), "source_host": block.get("host_id"),
+        "server_host": whoami.get("host_id"), "agent": agent, "foreground": fg.get("argv0"),
+        "conversation_id": conversation_id, "identity_note": note, "status": status,
+        "quiet_seconds": quiet})
+    if not fg.get("cwd") and agent:
+        reasons.append("Rex did not report the agent's working directory")
+    if reasons:
+        raise MoveRefusal("; ".join(reasons))
+    return {
+        "self": is_self, "agent": agent, "pid": pid, "conversation_id": conversation_id,
+        "status": status, "cwd": fg["cwd"], "transcript": transcript,
+        "resume_argv": resume_argv(agent, conversation_id),
+        "source": {"session_id": session_id, "window_id": window_id, "label": label,
+                   "session_label": next((s.get("label") for s in sessions
+                                          if s.get("session_id") == session_id), None),
+                   "label_auto": is_auto_label(label), "host_id": block.get("host_id"),
+                   "only_window": len(windows) == 1},
+        "destination": resolve_destination(sessions, to, session_id),
+    }
+
+
+# ── acting verbs ─────────────────────────────────────────────────────────
+
+
+def _remove_window(session_id: str, window_id: str, created_session: bool) -> dict:
+    subprocess.run(["rex", "window", "close", "-s", session_id, window_id],
+                   capture_output=True, timeout=15, check=False)
+    killed = False
+    if created_session and not list_windows(session_id):  # only a session this move created
+        killed = subprocess.run(["rex", "session", "kill", session_id], capture_output=True,
+                                timeout=15, check=False).returncode == 0
+    return {"closed_window": window_id, "killed_created_session": killed}
+
+
+def arm(plan: dict) -> tuple[dict, int]:
+    state = Path(tempfile.gettempdir()) / f"session-move-{os.getuid()}"
+    state.mkdir(mode=0o700, exist_ok=True)
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{plan['conversation_id']}-{plan['pid']}")
+    release = state / f"{stem}-{int(time.time())}.release"
+    created = _run_json(build_launch(plan, sys.executable, str(Path(__file__).resolve()),
+                                     str(release)))
+    if created is None:
+        raise MoveRefusal("Rex could not create the destination window; nothing was changed")
+    dst = plan["destination"]
+    first = (created.get("initial_windows") or [created])[0]
+    session_id = created.get("session_id") or dst["session_id"]
+    window_id, block_id = first["window_id"], first["block_ids"][0]
+
+    armed_file = Path(f"{release}.armed")
+    ports = Ports()
+    _wait(ports, armed_file.exists, ARM_TIMEOUT)
+    handoff_pid = int(armed_file.read_text()) if armed_file.exists() else None
+    fg = block_process(session_id, block_id).get("foreground") or {}
+    host = next((b.get("host_id") for b in list_blocks(session_id)
+                 if b.get("block_id") == block_id), None)
+    label = next((w.get("label") for w in list_windows(session_id)
+                  if w.get("window_id") == window_id), None)
+    src = plan["source"]
+    checks = {
+        "handoff_waiting": handoff_pid is not None and fg.get("pid") == handoff_pid,
+        "same_directory": bool(fg.get("cwd"))
+        and os.path.realpath(fg["cwd"]) == os.path.realpath(plan["cwd"]),
+        "same_computer": bool(host) and host == src["host_id"],
+        "same_name": src["label_auto"] or label == src["label"],
+    }
+    result = {
+        "armed": all(checks.values()), "checks": checks, "session_id": session_id,
+        "window_id": window_id, "block_id": block_id, "window_label": label,
+        "created_session": not dst["exists"], "handoff_pid": handoff_pid,
+        "release_file": str(release), "agent": plan["agent"], "self": plan["self"],
+        "conversation_id": plan["conversation_id"], "source": src,
+        "jump": shlex.join(jump_command(session_id, window_id, single_app_client())),
+    }
+    if not result["armed"]:
+        result["removed"] = _remove_window(session_id, window_id, result["created_session"])
+        return result, 3
+    return result, 0
+
+
+def go(armed: dict, wait: bool) -> tuple[dict, int]:
+    Path(armed["release_file"]).touch()
+    result = {"released": True, "jump": armed["jump"]}
+    if not wait:
+        return result, 0
+    ports, check = Ports(), {"resumed": False, "same_conversation": None}
+
+    def done() -> bool:
+        nonlocal check
+        reg = claude_registry(armed["handoff_pid"]) or {}
+        check = check_resumed(armed, block_process(armed["session_id"], armed["block_id"]),
+                              reg.get("sessionId"))
+        return check["resumed"] and (armed["agent"] != "claude"
+                                     or check["same_conversation"] is not None)
+
+    _wait(ports, done, RESUME_TIMEOUT)
+    if check["resumed"] and armed["agent"] == "muse":
+        row = next((r for r in inventory_rows("muse")[0]
+                    if r.get("pid") == armed["handoff_pid"]), None)
+        check = check_resumed(armed, {"foreground": {"argv0": "muse", "pid": armed["handoff_pid"]}},
+                              (row or {}).get("id"))
+    src = armed["source"]
+    result |= check
+    result["old_window_closed"] = all(w.get("window_id") != src["window_id"]
+                                      for w in list_windows(src["session_id"]))
+    ok = check["resumed"] and check["same_conversation"] is not False
+    return result, 0 if ok else 3
+
+
+def abort(armed: dict) -> dict:
+    fg = block_process(armed["session_id"], armed["block_id"]).get("foreground") or {}
+    if fg.get("pid") != armed["handoff_pid"] or detect_agent({"foreground": fg}):
+        raise MoveRefusal("the destination window is not waiting any more (the conversation may "
+                          "have resumed there); not closing it")
+    Path(armed["release_file"]).unlink(missing_ok=True)
+    return {"aborted": True,
+            **_remove_window(armed["session_id"], armed["window_id"], armed["created_session"])}
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="session-move", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="verb", required=True)
+    pl = sub.add_parser("plan")
+    pl.add_argument("--to", required=True)
+    pl.add_argument("--session")
+    pl.add_argument("--window")
+    pl.add_argument("--conversation")
+    sub.add_parser("arm")
+    g = sub.add_parser("go")
+    g.add_argument("--wait", action="store_true")
+    sub.add_parser("abort")
+    h = sub.add_parser("handoff")
+    h.add_argument("--agent", required=True, choices=AGENTS)
+    h.add_argument("--old-pid", required=True, type=int)
+    h.add_argument("--old-session", required=True)
+    h.add_argument("--old-window", required=True)
+    h.add_argument("--release-file", required=True)
+    h.add_argument("--transcript")
+    h.add_argument("--follow", action="store_true")
+    h.add_argument("resume_argv", nargs=argparse.REMAINDER)
+    ns = p.parse_args(argv)
+
+    if ns.verb == "handoff":
+        resume = ns.resume_argv[1:] if ns.resume_argv[:1] == ["--"] else ns.resume_argv
+        Path(f"{ns.release_file}.armed").write_text(str(os.getpid()))
+        return run_handoff({**vars(ns), "resume_argv": resume}, Ports())
+    code = 0
+    try:
+        if ns.verb == "plan":
+            result = make_plan(ns.to, ns.session, ns.window, ns.conversation)
+        else:
+            try:
+                data = json.load(sys.stdin)
+            except json.JSONDecodeError as exc:
+                raise MoveRefusal(f"stdin is not valid JSON: {exc}") from None
+            if ns.verb == "arm":
+                result, code = arm(data)
+            elif ns.verb == "go":
+                result, code = go(data, ns.wait)
+            else:
+                result = abort(data)
+    except MoveRefusal as exc:
+        print(f"session-move: {exc}", file=sys.stderr)
+        return 2
+    json.dump(result, sys.stdout, indent=2)
+    print()
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
