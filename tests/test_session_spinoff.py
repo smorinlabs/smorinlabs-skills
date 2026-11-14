@@ -156,6 +156,14 @@ BASE_PLAN = {
 }
 
 
+def assert_shell_wrapped(launch, agent_argv):
+    """The agent runs inside a login shell that becomes an interactive prompt when it exits."""
+    assert "--shell=none" in launch[:launch.index("--")]
+    shell, flag, script, arg0, *rest = launch[launch.index("--") + 1:]
+    assert (flag, script, arg0) == ("-ilc", sp.SHELL_FALLBACK, shell)
+    assert rest == agent_argv
+
+
 def test_commands_new_session():
     plan = {**BASE_PLAN, "placement": "new", "name": "shelf-tags"}
     cmds = sp.build_commands(plan)
@@ -165,7 +173,7 @@ def test_commands_new_session():
     launch = cmds["launch"]
     assert launch[:3] == ["rex", "new", "shelf-tags"]
     assert launch[launch.index("-c") + 1] == "/code/shelf-shelf-tags"
-    assert launch[launch.index("--") + 1:] == ["codex", BASE_PLAN["brief"]]
+    assert_shell_wrapped(launch, ["codex", BASE_PLAN["brief"]])
     assert "--json" in launch
 
 
@@ -174,7 +182,7 @@ def test_commands_existing_session():
     launch = sp.build_commands(plan)["launch"]
     assert launch[:5] == ["rex", "window", "new", "-s", "session:xyz"]
     assert launch[5] == "shelf-tags"
-    assert launch[launch.index("--") + 1:] == ["codex", BASE_PLAN["brief"]]
+    assert_shell_wrapped(launch, ["codex", BASE_PLAN["brief"]])
 
 
 def test_jump_command():
@@ -402,3 +410,23 @@ def test_snapshot_refuses_when_rex_listing_fails(monkeypatch):
     with pytest.raises(sp.SpinoffArgError) as exc:
         sp.snapshot("/code/shelf")
     assert "rex ls" in str(exc.value)
+
+
+# ── P72: the tab falls back to a shell prompt when the agent exits ───────
+
+
+def test_launch_uses_login_shell(monkeypatch):
+    monkeypatch.setenv("SHELL", "/opt/homebrew/bin/bash")
+    launch = sp.build_commands({**BASE_PLAN, "placement": "new", "name": "n"})["launch"]
+    assert launch[launch.index("--") + 1] == "/opt/homebrew/bin/bash"
+    monkeypatch.delenv("SHELL")
+    launch = sp.build_commands({**BASE_PLAN, "placement": "new", "name": "n"})["launch"]
+    assert launch[launch.index("--") + 1] == "/bin/zsh"
+
+
+def test_shell_fallback_runs_agent_verbatim_then_execs_shell():
+    brief = 'line one\n"quoted" $HOME `x` \'single\''
+    proc = subprocess.run(["/bin/sh", "-c", sp.SHELL_FALLBACK + "; echo NOT-REACHED", "/bin/sh",
+                           "printf", "%s", brief],
+                          stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+    assert proc.stdout == brief  # exec replaced the wrapper, so nothing after it ran

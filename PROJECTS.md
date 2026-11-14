@@ -2574,3 +2574,23 @@ workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen 
 - [x] [P71-T04] Pass `just all`, `gen --check`, and the cross-tool verifier; open the PR; merge after owner approval
 - [x] [P71-T05] After merge, update the lost-sessions helper to v0.4.0 in its own reviewed PR, and add the line that owns `.github/CODEOWNERS` itself; confirm CodeQL no longer reports alert #1 (owner decision 2026-11-13, Q4.A)
       Done 2026-11-14: lost-sessions PR #25, merge commit `227f304`; the CodeQL alert #1 instance on `main` is `fixed`
+
+## [~] Project P72: session-spinoff tabs fall back to a shell prompt when the agent exits (session 0.17.0 → 0.17.1)
+**Goal/Requirement**: Quitting a spun-off Claude Code, Codex, or Muse agent leaves the Rex tab at a
+normal interactive shell prompt instead of closing the tab (owner request 2026-11-14).
+- Root cause: `spinoff-plan` launched the agent as the tab's only process (`rex new … -- <agent> <brief>`),
+  so the tab ended with the agent. `--keep-open` was tested and rejected: it freezes the output with no shell.
+- Fix (owner decision 2026-11-14, Option 1): launch with `--shell=none -- $SHELL -ilc '"$@"; exec "$0" -il' $SHELL <agent> <brief>`.
+  The brief stays a separate argument, so no shell quoting touches it.
+
+**Out of Scope**
+- Typing the command into a plain shell with `rex send` (Option 2, rejected: quoting and readiness races).
+- Non-POSIX login shells (fish); `$SHELL` falls back to `/bin/zsh` when unset.
+
+### Tests & Tasks
+- [x] [P72-TS01] Test: both launch forms run the agent through the login shell wrapper with `--shell=none`, brief unchanged as the last argument
+- [x] [P72-TS02] Test: the wrapper script runs the agent argv verbatim, then execs the shell
+- [x] [P72-T01] Change `build_commands` in `spinoff-plan`; note the behavior in SKILL.md step 8
+- [x] [P72-T02] Bump session 0.17.0 → 0.17.1; `just gen`; `just all` (release notes are written at release time, as for P71)
+- [ ] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b)
+- [ ] [P72-T04] PR, merge with owner approval

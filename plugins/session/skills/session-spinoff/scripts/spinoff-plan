@@ -207,6 +207,10 @@ def jump_command(client: str | None, session_id: str, window_id: str | None) -> 
     return cmd
 
 
+# Run the agent argv ("$@"), then replace this shell with an interactive login shell ("$0"
+# is the shell's own path). The brief stays an argument, so no quoting ever touches it.
+SHELL_FALLBACK = '"$@"; exec "$0" -il'
+
 REQUIRED_KEYS = ("repo", "default_branch", "branch", "worktree", "placement",
                  "tab_label", "agent", "brief")
 
@@ -231,13 +235,16 @@ def build_commands(plan: dict) -> dict:
     if not (inside or parent):
         raise SpinoffArgError(f"launch_dir {launch_dir} must be the worktree, inside it, "
                               f"or a parent of it ({wt})")
-    agent_argv = [plan["agent"], plan["brief"]]
+    shell = os.environ.get("SHELL") or "/bin/zsh"
+    # The agent runs inside the login shell, which becomes an interactive prompt when the
+    # agent exits, so quitting the agent leaves the tab open at a shell instead of closing it.
+    agent_argv = [shell, "-ilc", SHELL_FALLBACK, shell, plan["agent"], plan["brief"]]
     if plan["placement"] == "new":
         launch = ["rex", "new", plan["name"], "--window", plan["tab_label"],
-                  "-c", launch_dir, "--json", "--", *agent_argv]
+                  "-c", launch_dir, "--shell=none", "--json", "--", *agent_argv]
     else:
         launch = ["rex", "window", "new", "-s", plan["session"], plan["tab_label"],
-                  "-c", launch_dir, "--focus=false", "--json", "--", *agent_argv]
+                  "-c", launch_dir, "--focus=false", "--shell=none", "--json", "--", *agent_argv]
     cmds = {
         "worktree": ["git", "-C", repo, "fetch", "origin"],
         "worktree_add": ["git", "-C", repo, "worktree", "add", "-b", plan["branch"], wt,

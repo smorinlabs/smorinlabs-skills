@@ -18,7 +18,8 @@ directories their tabs work in, and "New session" is always an option. The
 same question confirms the launch directory: the worktree root by default, a
 package directory for monorepo work, or a parent directory for ideas that span
 repos. After launch the skill verifies that the agent is running in that
-directory. A
+directory. The agent runs inside your login shell, so quitting it leaves the
+tab open at a normal shell prompt instead of closing the tab. A
 new session gets a proposed `<type>-<topic>` name you confirm or edit. The
 agent you are running now is the default. The skill finishes with a receipt
 (Rex session and tab, agent, worktree, branch) and the
