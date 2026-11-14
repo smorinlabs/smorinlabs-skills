@@ -23,17 +23,30 @@
    refuses tracked credential-like files, including common package-manager,
    cloud, SSH, and certificate stores. Extend `sensitive()` for repository-specific
    names and review source for embedded credentials; filenames alone are incomplete.
+   A single-maintainer repository cannot satisfy a required review without an
+   admin bypass. Record that bypass as an explicit owner decision and rely on
+   the verified member-only writer boundary. Preserve existing ruleset bypass
+   actors (for example release Apps) when adding default-branch rules.
 3. Configure active GitHub workflow execution policies for
    `.github/workflows/opencode-pr-review.yml` with `pull_request`, and when used,
    `.github/workflows/opencode-fix-pr.yml` with `workflow_dispatch`. Select the
    owner's approved organization team. Inspect the resulting policy with
    [GitHub's Actions policies API](https://docs.github.com/en/rest/actions/policies)
    or **Settings > Actions > Policies**. Exact API payloads must follow the
-   current schema, not guessed identifiers. Verify scope, enforcement status,
-   team identity, event restrictions, and inherited policies. Record the policy
+   current schema, not guessed identifiers. Read repository policies with
+   `gh api -H "X-GitHub-Api-Version: 2026-03-10" repos/OWNER/REPO/actions/policies`;
+   the organization endpoint needs the `admin:org` token scope. A policy body
+   carries `name`, `enforcement: "active"`, `conditions.workflow_path`
+   (`include`/`exclude`), and rules `restrict_actions_actors` (`allowed_actors`
+   of `{id, type}`) and `restrict_action_events` (`allowed_events`). If the
+   organization has no team, do not invent one: ask the owner either to create
+   the approved team (an organization change) or, for a single-maintainer
+   organization, to approve `User` actors naming the verified maintainers.
+   Never use `RepositoryRole`; a repository role is not membership.
+   Verify scope, enforcement status, team identity, event restrictions, and inherited policies. Record the policy
    IDs and the read-back evidence. Do not enable the workflow on an unsupported
    repository plan or substitute broad repository write roles for membership.
-4. Install the distinct Meta key and resolve private-membership read access as
+4. Install the Meta key and the membership App secrets as
    described in [secrets](secrets.md). Read back secret names. Never read values.
 5. Land configuration on the protected default branch through the repository's
    normal human review process when authorized. The setup PR's base does not yet
@@ -63,7 +76,7 @@ Source: [workflows triggered by workflows](https://docs.github.com/en/actions/ho
 | Outside collaborator with repository write | Platform execution policy blocks the workflow; repository role alone does not qualify |
 | Outside writer changes this workflow, then a member pushes | Server-enforced path restriction prevents the workflow edit; without that restriction or a verified member-only writer model, activation remains blocked |
 | Rerun by someone outside the approved team | Platform blocks it or the authorization check fails before model credentials are used |
-| Private membership cannot be verified | Authorization fails; no model call; identifies missing member-read access |
+| Private membership cannot be verified | Missing App secrets fail the mint step, or the authorization check refuses; no model call either way |
 | Missing Meta secret | Installation remains incomplete; no repeated paid retries |
 | Rapid PR update | Old run is cancelled or fails the final stale-head check; its run summary records the old input SHA even if the model omitted it from its comment |
 | Malicious PR OpenCode plugin/config | Project discovery disabled and review has no model tools; configuration comes from the protected base |

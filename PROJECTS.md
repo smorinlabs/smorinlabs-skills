@@ -2392,3 +2392,18 @@ Docs name both tables.
       lineage and stays listed (CodeRabbit review on PR #99)
 - [x] [P64-T03] `scan_opencode` adds legacy-only rows and v2 fork lineage; docs name `legacy_only`
 - [x] [P64-T02] Bump session to 0.13.1; release notes; pass `just all`, open the PR, and merge (#99; released in v0.32.2)
+
+## [~] Project P65: muse-github-setup fixes from the lost-sessions test run (muse-github v0.2.0 → v0.3.0)
+
+**Goal/Requirement**: Fold the T8 lost-sessions gotchas into the skill, and replace the
+`MUSE_CI_GITHUB_MEMBERS_TOKEN` PAT with a Members-read GitHub App whose token each
+workflow mints. Owner decisions 2026-11-12: App over PAT; Meta key scope chosen by owner.
+
+**Out of Scope**
+- Splitting `MUSE_CI_ENABLED` per workflow (G1 proposes it; not decided).
+
+### Tests & Tasks
+- [x] [P65-TS01] Both templates mint the members token from `MUSE_CI_MEMBERS_APP_*` via SHA-pinned `actions/create-github-app-token` with `permission-members: read`; App secrets appear only in the mint step
+- [x] [P65-T01] Template mint step; security, secrets, and acceptance docs; SKILL.md prerequisites
+- [x] [P65-T02] Gotcha-driven doc edits (no-team branch, policies API, single maintainer, test path, dry-run probe, key scope)
+- [ ] [P65-T03] Pass `just all` and skill-quality, open the PR, merge

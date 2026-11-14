@@ -16,10 +16,12 @@ agent runtime, not an operating-system sandbox.
 
 The helper checks current membership with `GET /orgs/ORG/members/USER` and
 repository permission separately. GitHub may hide private membership from the
-repository token. Use an existing authorized credential with organization
-Members read access as `MUSE_CI_GITHUB_MEMBERS_TOKEN`; otherwise membership checks
-fail closed. That credential is exposed only to the trusted authorization step,
-never to OpenCode. A lookup error does not become an eligible actor.
+repository token. Each workflow therefore mints a short-lived installation
+token from a dedicated organization GitHub App whose only permission is
+Members: read (`actions/create-github-app-token`, SHA-pinned, with
+`permission-members: read`). Without the App secrets the mint step fails and
+no model call happens. The App key is exposed only to the mint step and its
+token only to the trusted authorization step, never to OpenCode. A lookup error does not become an eligible actor.
 
 GitHub workflow execution protections are available for all public repositories
 and private repositories on Team/Enterprise. Inspect the actual target plan and
