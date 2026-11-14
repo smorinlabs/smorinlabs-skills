@@ -424,9 +424,16 @@ def test_launch_uses_login_shell(monkeypatch):
     assert launch[launch.index("--") + 1] == "/bin/zsh"
 
 
-def test_shell_fallback_runs_agent_verbatim_then_execs_shell():
+def test_shell_fallback_runs_agent_verbatim_then_execs_shell(tmp_path):
+    """After the agent exits, the wrapper execs "$0" -il, the shell that becomes the prompt."""
+    record = tmp_path / "shell-args"
+    fake_shell = tmp_path / "fake-shell"
+    fake_shell.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{record}"\n')
+    fake_shell.chmod(0o755)
     brief = 'line one\n"quoted" $HOME `x` \'single\''
-    proc = subprocess.run(["/bin/sh", "-c", sp.SHELL_FALLBACK + "; echo NOT-REACHED", "/bin/sh",
+    proc = subprocess.run(["/bin/sh", "-c", sp.SHELL_FALLBACK + "; echo NOT-REACHED", str(fake_shell),
                            "printf", "%s", brief],
                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
-    assert proc.stdout == brief  # exec replaced the wrapper, so nothing after it ran
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == brief  # agent argv verbatim; exec replaced the wrapper, so nothing after ran
+    assert record.read_text().splitlines() == ["-il"]
