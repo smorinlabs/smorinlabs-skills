@@ -190,3 +190,48 @@ def test_managed_ownership_moves_after_later_rules_and_repeats(tmp_path, templat
     assert f"/.github/workflows/muse-*.yml {owner}\n" in rendered
     installer.apply(tmp_path, changes)
     assert installer.plan(tmp_path, "example-org", codeowner=owner) == {}
+
+
+def previous_managed(root, model, fixes):
+    snapshots = json.loads(installer.MANAGED.read_text())
+    for name, versions in snapshots.items():
+        if not fixes and name in installer.OPTIONAL:
+            continue
+        target = root / ("AGENTS.md" if name == "AGENTS.muse.md" else name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        text = installer.render(versions[0], "example-org", model)
+        if name == "AGENTS.muse.md":
+            text = "# Existing project guidance\n\n" + text + "\nKeep this trailing guidance.\n"
+        target.write_text(text)
+
+
+@pytest.mark.parametrize("model", sorted(installer.MODELS))
+@pytest.mark.parametrize("fixes", [False, True])
+def test_known_claude_install_updates_preserving_model_fixes_and_unrelated_files(tmp_path, templates, model, fixes):
+    previous_managed(tmp_path, model, fixes)
+    unrelated = tmp_path / "opencode.json"
+    unrelated.write_text('{"keep":true}\n')
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    changes = installer.plan(tmp_path, "example-org")
+    assert changes and all(content is not None for content in changes.values())
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert json.loads(changes[installer.NEW_POLICY])["model"] == model
+    assert (".github/workflows/muse-fix-pr.yml" in changes) is fixes
+    installer.apply(tmp_path, changes)
+    assert unrelated.read_text() == '{"keep":true}\n'
+    assert (tmp_path / "AGENTS.md").read_text().startswith("# Existing project guidance\n\n")
+    assert (tmp_path / "AGENTS.md").read_text().endswith("\nKeep this trailing guidance.\n")
+    assert installer.plan(tmp_path, "example-org") == {}
+
+
+@pytest.mark.parametrize("name", [".github/scripts/muse_ci.py", ".github/workflows/muse-followup.yml", "AGENTS.md"])
+def test_changed_claude_install_refuses_update_without_writes(tmp_path, templates, name):
+    previous_managed(tmp_path, "muse-spark-1.3", False)
+    target = tmp_path / name
+    current = target.read_text()
+    target.write_text(current.replace(installer.END_MARKER, "Local change.\n" + installer.END_MARKER)
+                      if name == "AGENTS.md" else current + "Local change.\n")
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(installer.Conflict, match="differs"):
+        installer.plan(tmp_path, "example-org")
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}

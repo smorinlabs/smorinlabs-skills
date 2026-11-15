@@ -26,6 +26,9 @@ in ordinary language. This is not a local-review or general Claude setup skill.
 The installer also maintains marked project-instruction and CODEOWNERS sections.
 Surrounding instructions and unrelated files remain intact. Workflows use the
 existing activation variable `MUSE_CI_ENABLED`; installation does not change it.
+Updates recognize exact previously generated Claude Action files and preserve
+their model and optional fixes. Locally modified managed files remain conflicts
+that require reviewed reconciliation.
 
 Reviews permit the available read-only tools: native file reads/searches, web
 tools, resource inspection, runtime/task listings, and CI status/log inspection.
@@ -36,7 +39,9 @@ WebSearch/WebFetch success.
 The action shows live progress. A trusted helper consolidates completed automatic reviews
 into a reusable marked summary because upstream sticky matching does not reliably
 recognize the repository-token bot. Comment follow-ups retain separate responses;
-the helper verifies publication and correct discussion placement. When upstream
+each triggering comment has its own bounded run, so rapid follow-ups do not
+replace one another. They may complete in a different order from their requests.
+The helper verifies publication and correct discussion placement. When upstream
 progress falls back to top level for a child reply, the helper relocates the
 completed answer to the validated root and removes the fallback after readback.
 The pilot must prove this temporary progress behavior. Tests do not run in the

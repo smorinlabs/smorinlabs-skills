@@ -12,6 +12,8 @@ sources, not live workflow acceptance results.
 | [SDK argument mapping](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/base-action/src/parse-sdk-options.ts) | Tool-rule merging, setting-source mapping, extraArgs, empty-value limitation |
 | [GitHub MCP configuration](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/mcp/install-mcp-server.ts) | Minimal comment/inline servers versus broader GitHub server |
 | [Initial comment creation](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/github/operations/comments/create-initial.ts) | Inline thread replies, fallback behavior, Claude-specific sticky matcher |
+| [Configuration restoration](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/github/operations/restore-config.ts) | Fetches the current base tip; final validation records that separate restoration revision |
+| [File permission rules](https://code.claude.com/docs/en/permissions#special-characters-and-negation) | Exact same-source deny negations for non-credential data fixtures; supplied custom denies retained |
 | [Inline classifier](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/entrypoints/post-buffered-inline-comments.ts) | Direct Anthropic classifier request; disabled for Muse |
 | [Meta coding agents](https://dev.meta.ai/docs/coding-agents) | Meta base host, bearer auth, supported Muse model routing and aliases |
 | [Gateway action recipe](https://code.claude.com/docs/en/llm-gateway-connect#github-actions) | Bearer token plus `anthropic_api_key` launch-check input |
@@ -34,7 +36,9 @@ The [OpenCode action removal](https://github.com/anomalyco/opencode/pull/59032)
 is the migration motivation, not the selected runtime.
 
 `references/legacy/` holds exact managed-file snapshots used for deliberate
-migration. The cookbook notice remains in `.github/muse-ci/NOTICE`. Upstream
+migration. `references/managed/` holds exact earlier Claude Action output for
+safe updates that preserve locally modified files as conflicts.
+The cookbook notice remains in `.github/muse-ci/NOTICE`. Upstream
 Actions are referenced rather than copied. The helper, permission settings,
 summary consolidation/thread relocation and workflow policy are maintained by this project;
 they are not a Meta-issued Action or an unmodified Anthropic example. This runs

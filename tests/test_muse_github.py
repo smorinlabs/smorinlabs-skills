@@ -369,6 +369,7 @@ def test_prepare_generates_isolated_configuration_and_exact_diff(repo_pair, tmp_
         "GITHUB_WORKSPACE": str(runner), "GITHUB_EVENT_PATH": str(event_path),
         "GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "fixture-org/project",
         "GITHUB_ACTOR": "original", "MUSE_TRIGGERING_ACTOR": "rerunner", "GH_TOKEN": "fixture-value",
+        "MUSE_TRUSTED_BASE_SHA": base,
         "RUNNER_TEMP": str(tmp_path), "GITHUB_ENV": str(tmp_path / "env"), "GITHUB_OUTPUT": str(tmp_path / "output"),
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
         "GITHUB_RUN_ID": "123",
@@ -479,6 +480,7 @@ def test_unsafe_review_input_never_publishes_model_prompt(repo_pair, tmp_path, m
         "GITHUB_WORKSPACE": str(runner), "GITHUB_EVENT_PATH": str(event_path),
         "GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "fixture-org/project",
         "GITHUB_ACTOR": "original", "MUSE_TRIGGERING_ACTOR": "rerunner", "GH_TOKEN": "fixture-value",
+        "MUSE_TRUSTED_BASE_SHA": base,
         "RUNNER_TEMP": str(tmp_path), "GITHUB_ENV": str(tmp_path / "env"), "GITHUB_OUTPUT": str(tmp_path / "output"),
         "GITHUB_RUN_ID": "123",
     }

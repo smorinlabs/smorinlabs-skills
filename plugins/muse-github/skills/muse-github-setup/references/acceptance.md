@@ -56,6 +56,9 @@ instructions remain untouched.
 
 A modified or unknown managed legacy file is a conflict. Preserve it and prepare
 a reviewed reconciliation; never use force-copying to make migration pass.
+Subsequent Claude Action updates also recognize exact prior managed snapshots.
+They retain the installed model and optional fixes without requiring the legacy
+migration flag. Modified managed files still require reviewed reconciliation.
 Update path-scoped execution policies and required-check names in the cutover.
 Verify that obsolete Muse bots cannot run alongside the replacement. If an active
 old installation requires a temporary pause, record and restore its prior
@@ -75,7 +78,7 @@ Run these checks against the edited skill worktree, not its old live placement:
 
 | Check | Required coverage |
 |---|---|
-| Installer/helper tests | Fresh install, exact legacy migration, idempotence, retained model/fixes, unrelated-file preservation, changed legacy conflict, symlink refusal, failures |
+| Installer/helper tests | Fresh install, exact legacy migration and managed-version update, idempotence, retained model/fixes, unrelated-file preservation, changed managed-file conflict, symlink refusal, failures |
 | Workflow checks | Rendered YAML lint; event/actor/mention guards; explicit token; all Muse aliases; classifier false on every action |
 | Runtime isolation | Explicit settings through SDK; no PR hooks/skills/MCP/instruction startup; no shell or review edits; fake credential paths denied to reads/native search; permitted CI log reads; safe in-checkout review aliases; escaping/credential/cyclic alias refusal; all fix symlinks refused; read-only tool exposure |
 | Package/skill checks | Meaningful repository tests, generated manifest check, skill content/docs/trigger review, static load check against edited source |
@@ -105,6 +108,7 @@ Use small reversible PRs and clearly identified test comments.
 | Eligible PR opens/updates | Official action uses Muse; exact input SHA recorded; progress visible; no code mutation |
 | Deliberate unambiguous defect | Valid inline finding on the intended file, line, and reviewed commit |
 | Member's new `@muse` PR comment | Relevant follow-up with PR context and a separate response |
+| Two member follow-ups overlap | Both bounded runs retain their own correlated responses; neither pending request is replaced by the other |
 | Member's new inline `@muse` reply | Actual completed reply in the intended discussion; temporary upstream progress fallback is permitted only when helper relocation succeeds and the fallback is removed |
 | Progress and repeat review | Visible progress updates; final marked summary reused on another eligible trigger; no unintended leftover duplicate |
 | PR advances during run | Cancellation or explicit stale failure; old/current SHA recorded; existing findings acknowledged as possibly stale |

@@ -54,6 +54,8 @@ Install and maintain organization-member Muse reviews through the official Claud
    model and every deletion before applying. Read [acceptance](references/acceptance.md)
    for the complete cutover, idempotence, and rollback procedure.
    Known legacy files migrate only when they match a recorded snapshot exactly.
+   Known Claude Action installations update only when their files match a
+   recorded managed snapshot rendered with the existing model and organization.
    Modified legacy files require reviewed reconciliation; do not force overwrite.
    Existing optional fix support and model choice are retained. Root
    `opencode.json`/`opencode.jsonc` and unrelated OpenCode content are preserved.

@@ -14,6 +14,7 @@ import tempfile
 SKILL = Path(__file__).resolve().parents[1]
 TEMPLATES = SKILL / "templates"
 LEGACY = SKILL / "references/legacy/snapshots.json"
+MANAGED = SKILL / "references/managed/snapshots.json"
 MARKER = "<!-- muse-github-setup:security:start -->"
 END_MARKER = "<!-- muse-github-setup:security:end -->"
 OWNERS_MARKER = "# Muse CI security-sensitive configuration (muse-github-setup)."
@@ -121,6 +122,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
     if model is not None and model not in MODELS:
         raise Conflict(f"model must be one of: {', '.join(MODELS)}")
     snapshots = json.loads(LEGACY.read_text())
+    previous = json.loads(MANAGED.read_text())
     old_names = [name for name in snapshots if name != "AGENTS.muse.md"]
     # The helper has the same destination in both generations; it alone is not proof of a legacy install.
     legacy_present = any(destination(root, n).exists() for n in old_names if n != ".github/scripts/muse_ci.py")
@@ -156,7 +158,12 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
         body = render((TEMPLATES / name).read_text(), organization, selected)
         target = destination(root, name)
         if target.exists() and target.read_text() != body and name not in recognized:
-            raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
+            known = installed_model is not None and any(
+                target.read_text() == render(old, organization, installed_model)
+                for old in previous.get(name, [])
+            )
+            if not known:
+                raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
         if not target.exists() or target.read_text() != body:
             changes[name] = body
     instructions = destination(root, "AGENTS.md")
@@ -170,7 +177,12 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
         end = current.index(END_MARKER, start) + len(END_MARKER)
         existing_block = current[start:end]
         if existing_block != security.strip():
-            if not migrate_opencode or not any(existing_block == old.strip() for old in snapshots["AGENTS.muse.md"]):
+            known_legacy = migrate_opencode and any(existing_block == old.strip() for old in snapshots["AGENTS.muse.md"])
+            known_managed = installed_model is not None and any(
+                existing_block == render(old, organization, installed_model).strip()
+                for old in previous.get("AGENTS.muse.md", [])
+            )
+            if not (known_legacy or known_managed):
                 raise Conflict("Existing Muse AGENTS.md section differs; preserve its project-specific edits")
             changes["AGENTS.md"] = current[:start] + security.strip() + current[end:]
     else:

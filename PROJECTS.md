@@ -2683,7 +2683,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       the variables decide. Bump session 0.18.1 → 0.18.2.
 - [ ] [P73-T16] Release session 0.18.2
 
-## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.0)
+## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.1)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
 with the official Anthropic Action while preserving Meta Muse routing. Add inline
 findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
@@ -2695,18 +2695,21 @@ eligible organization repositories in small verified batches.
 - [x] [P74-T02] Implement installer migration, trusted workflows/runtime, broad read-only tools, and regression tests.
 - [x] [P74-T03] Refresh skill instructions, security/acceptance/provenance/secrets references, docs page, README row, plugin version, and manifests.
 - [x] [P74-T04] Validate local behavior, workflow syntax, skill loading, and independent implementation review; resolve findings before the pilot.
-- [ ] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement.
+- [x] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement (0.5.0 in #119).
+- [ ] [P74-T08] Repair late pilot review findings, validate managed-version updates, and land 0.5.1 before live acceptance.
 - [ ] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on one live pilot.
 - [ ] [P74-T07] Migrate remaining eligible repositories incrementally, recording exact installation and live-verification evidence.
 
 ### Validation status
-The final focused Muse suite passes 169 checks. All three workflows pass actionlint;
-generated manifests and name/whitespace checks pass. Real Claude CLI permission and
-symlink probes pass 11 and 6 checks respectively; four pinned Action parser cases pass.
-Independent review fixes cover inline fallback publication, startup-file symlinks,
-malformed instruction markers, and CODEOWNERS precedence. Claude and Codex deep skill
-loading pass using the current local skill verifier. Muse loads with an advisory-metadata warning.
-The full repository run recorded one unrelated runner-survey failure, 1388 passes and
-four skips; that unchanged test passed independently in both worktrees afterward.
-Final installer smoke passes: 16 planned/applied changes, then zero on repeat.
-Source landing, live pilot, and rollout acceptance remain pending.
+Version 0.5.0 landed in #119 and its installed placement was verified. Pilot setup
+landed in smorinlabs/lost-sessions#31; activation remains paused while five late
+review findings are repaired in 0.5.1 before live acceptance.
+
+The 0.5.1 focused Muse suite passes 200 tests. All three workflows pass actionlint;
+generated manifests and name/whitespace checks pass. Real Claude CLI probes pass
+11 baseline, 6 symlink, and 6 data-fixture checks with fake credentials and a
+loopback-only endpoint. Direct fixture Read and file-targeted Grep work; directory
+Grep can still omit exempted fixtures. These probes do not prove live Muse access.
+Known 0.5.0 output upgrades with 4 previewed/applied changes and zero on repeat,
+preserving the standard model, optional fixes, and unrelated configuration.
+Skill-load refresh, repair landing, live pilot, and rollout remain pending.

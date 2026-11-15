@@ -203,7 +203,8 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
     git(root, "remote", "add", "origin", str(remote))
-    git(root, "push", "-q", "origin", "HEAD:refs/heads/feature")
+    git(root, "push", "-q", "origin", "HEAD:refs/heads/feature", f"{base}:refs/heads/main")
+    git(root, "fetch", "-q", "origin", "main")
     git(root, "checkout", "-q", "--detach", base)
     repo = {"full_name": "org/repo", "owner": {"type": "Organization", "login": "org"}, "default_branch": "main"}
     pr = {"number": 1, "state": "open", "draft": False, "user": {"type": "User", "login": "author"},
@@ -219,6 +220,7 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
     temp.mkdir()
     env = {"GITHUB_WORKSPACE": str(root), "GITHUB_EVENT_PATH": str(event_path), "GITHUB_EVENT_NAME": "pull_request",
            "GITHUB_REPOSITORY": "org/repo", "GITHUB_ACTOR": "actor", "MUSE_TRIGGERING_ACTOR": "actor",
+           "MUSE_TRUSTED_BASE_SHA": base,
            "GITHUB_RUN_ID": "10", "RUNNER_TEMP": str(temp), "GITHUB_ENV": str(envfile),
            "GITHUB_OUTPUT": str(outfile), "GH_TOKEN": "fake"}
     api = API(pr)
@@ -274,9 +276,9 @@ def test_fix_publication_creates_separate_branch_and_refuses_existing_remote(git
     assert not api.calls
 
 
-def test_finish_rejects_failed_action_before_api_or_publication(tmp_path, monkeypatch):
+def test_finish_rejects_mode_mismatch_before_api_or_publication(tmp_path, monkeypatch):
     state = tmp_path / "state.json"
-    state.write_text(json.dumps({"mode": "review"}))
+    state.write_text(json.dumps({"mode": "fix"}))
     env = {"GITHUB_WORKSPACE": str(tmp_path), "MUSE_CI_STATE": str(state), "MUSE_ACTION_OUTCOME": "failure"}
     monkeypatch.setattr(ci, "GitHub", lambda token: pytest.fail("API must not be reached"))
     with pytest.raises(ci.Refusal, match="Action failed"):
@@ -286,13 +288,15 @@ def test_finish_rejects_failed_action_before_api_or_publication(tmp_path, monkey
 def test_finish_followup_rejects_unproven_response_and_stale_head(tmp_path, monkeypatch):
     head = "a" * 40
     state = tmp_path / "state.json"
-    state.write_text(json.dumps({"mode": "followup", "repository": "org/repo", "number": 1, "head": head}))
+    state.write_text(json.dumps({"mode": "followup", "repository": "org/repo", "number": 1, "head": head,
+                                 "default_branch": "main", "trusted_base": "b" * 40}))
     env = {"GITHUB_WORKSPACE": str(tmp_path), "MUSE_CI_STATE": str(state), "MUSE_ACTION_OUTCOME": "success",
            "MUSE_ACTION_CONCLUSION": "success",
            "GH_TOKEN": "fake"}
-    api = API({"head": {"sha": head}})
+    api = API({"head": {"sha": head}, "base": {"ref": "main"}})
     monkeypatch.setattr(ci, "GitHub", lambda token: api)
     monkeypatch.setattr(ci, "review_workspace", lambda root, state: None)
+    monkeypatch.setattr(ci, "restore_revision", lambda root, state: "b" * 40)
     with pytest.raises(ci.Refusal, match="execution"):
         ci.finish("followup", env)
     assert all(call[0] == "GET" for call in api.calls)
