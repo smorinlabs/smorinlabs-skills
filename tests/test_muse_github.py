@@ -498,3 +498,11 @@ def test_membership_token_is_minted_from_a_members_read_app():
         assert authorize["env"]["MUSE_MEMBERS_TOKEN"] == "${{ steps.members.outputs.token }}"
         others = [step for step in steps if step is not mint]
         assert "MUSE_CI_MEMBERS_APP_" not in yaml.dump(others)
+
+
+def test_cli_plan_names_the_rendered_model(tmp_path):
+    default = run_installer(tmp_path / "default", "--codeowner", "@fixture-org/maintainers")
+    assert default.returncode == 0 and "model: model_api/muse-spark-1.3-contributor" in default.stdout
+    standard = run_installer(tmp_path / "standard", "--codeowner", "@fixture-org/maintainers",
+                             "--model", "muse-spark-1.3")
+    assert standard.returncode == 0 and "model: model_api/muse-spark-1.3\n" in standard.stdout

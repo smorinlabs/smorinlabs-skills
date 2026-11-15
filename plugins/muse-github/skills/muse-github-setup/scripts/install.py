@@ -166,6 +166,7 @@ def main() -> int:
         changes = plan(root, args.organization, args.with_fixes, args.model, args.codeowner)
         for name in changes:
             print(("update " if (root / name).exists() else "create ") + name)
+        print(f"model: model_api/{args.model}")
         if args.apply:
             apply(root, changes)
         print(f"{'Applied' if args.apply else 'Planned'} {len(changes)} file changes. "

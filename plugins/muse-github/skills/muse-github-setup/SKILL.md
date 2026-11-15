@@ -50,8 +50,13 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    per GitHub owner, or one per repository.
    The contributor tier permits Meta to use submitted content for training;
    disclose that when choosing it for a repository. Honor an existing owner
-   decision rather than asking again. A restriction against sharing private
-   code with that tier requires a new model decision, never a silent fallback.
+   decision rather than asking again. A tier decision made for a public
+   repository does not carry over to a private one: for a private repository,
+   present the standard tier (`muse-spark-1.3`, recommended), the contributor
+   tier, and not installing as a new owner decision. A restriction against
+   sharing private code with that tier requires a new model decision, never a
+   silent fallback. The installer's plan prints the `model:` it will render;
+   confirm it before `--apply`.
    Use another listed model only when the owner explicitly asks for it, and
    pass it to the installer as `--model`:
 
