@@ -225,8 +225,10 @@ was unavailable. No open inline review threads existed at that gate.
 The third, private consumer was then installed and read back against the same
 six generated templates. Its local checks passed **397 Python tests** and
 **20 Bun tests**, with six Python skips and four deselections; **66** targeted
-audit tests passed. A manual default-branch dispatch produced a skipped triage
-job, confirming its existing inactive state. No credential was added and no
+audit tests passed. Organization ownership and the manual default-branch event
+were verified separately against repository and run metadata. With those other
+job conditions satisfied, the skipped triage job identifies the closed activation
+gate. A skipped job alone would not establish this. No credential was added and no
 activation or model-tier choice changed. This is installation/inactivity evidence,
 not live model acceptance. Repository identity, exact commits, run links, and
 private CI limitations are retained in the private rollout ledger.
