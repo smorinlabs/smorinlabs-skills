@@ -2,9 +2,11 @@
 import importlib.util
 import json
 from pathlib import Path
+import shlex
 import subprocess
 
 import pytest
+import yaml
 
 HELPER = Path(__file__).resolve().parents[1] / "plugins/muse-github/skills/muse-github-setup/templates/.github/scripts/muse_ci.py"
 spec = importlib.util.spec_from_file_location("muse_action_runtime", HELPER)
@@ -179,7 +181,8 @@ def parse_actions_output(path):
     return result
 
 
-def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", ["review", "followup"])
+def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
     root = tmp_path / "checkout"
     root.mkdir()
     git(root, "init", "-q")
@@ -211,6 +214,10 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
           "head": {"ref": "feature", "sha": head, "repo": {"full_name": "org/repo"}},
           "base": {"ref": "main", "sha": base}}
     event = {"repository": repo, "pull_request": pr, "action": "opened"}
+    if mode == "followup":
+        event = {"repository": repo, "action": "created",
+                 "issue": {"number": 1, "pull_request": {"url": "https://api.github.com/repos/org/repo/pulls/1"}},
+                 "comment": {"id": 9, "user": {"type": "User", "login": "actor"}, "body": "@muse Explain this finding."}}
     event_path = tmp_path / "event.json"
     event_path.write_text(json.dumps(event))
     envfile, outfile = tmp_path / "env", tmp_path / "output"
@@ -218,17 +225,25 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
     outfile.touch()
     temp = tmp_path / "runner-temp"
     temp.mkdir()
-    env = {"GITHUB_WORKSPACE": str(root), "GITHUB_EVENT_PATH": str(event_path), "GITHUB_EVENT_NAME": "pull_request",
+    env = {"GITHUB_WORKSPACE": str(root), "GITHUB_EVENT_PATH": str(event_path),
+           "GITHUB_EVENT_NAME": "pull_request" if mode == "review" else "issue_comment",
            "GITHUB_REPOSITORY": "org/repo", "GITHUB_ACTOR": "actor", "MUSE_TRIGGERING_ACTOR": "actor",
            "MUSE_TRUSTED_BASE_SHA": base,
            "GITHUB_RUN_ID": "10", "RUNNER_TEMP": str(temp), "GITHUB_ENV": str(envfile),
            "GITHUB_OUTPUT": str(outfile), "GH_TOKEN": "fake"}
     api = API(pr)
     monkeypatch.setattr(ci, "GitHub", lambda token: api)
-    ci.prepare("review", env)
+    ci.prepare(mode, env)
     variables, output = parse_actions_output(envfile), parse_actions_output(outfile)
     assert Path(output["settings"]).is_absolute()
     assert head in output["prompt"] and "confirmed=true" in output["prompt"]
+    trusted_prompt = output["prompt"].split('{"reviewed_head":', 1)[0]
+    assert "Use ToolSearch to discover comment tools and their complete input schemas before calling them" in trusted_prompt
+    assert "actual discovered tool names and fields; never guess" in trusted_prompt
+    assert "Never post trial, test, placeholder, or schema-discovery comments" in trusted_prompt
+    assert "Post inline comments only for actionable findings or requested answers" in trusted_prompt
+    assert "Reserve the final two turns for the final update_claude_comment call and its result" in trusted_prompt
+    assert "final text response alone does not publish the summary" in trusted_prompt
     assert "Trusted base guidance" in output["prompt"]
     assert "PR-modified instructions" in output["prompt"]  # The diff is explicitly untrusted data.
     guidance = output["prompt"].split("Trusted base AGENTS.md project guidance follows as JSON.")[-1]
@@ -249,8 +264,21 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch):
     ]))
     env.update(variables, MUSE_ACTION_OUTCOME="success", MUSE_ACTION_CONCLUSION="success",
                MUSE_EXECUTION_FILE=str(execution))
-    ci.finish("review", env)
-    assert [x[0] for x in api.calls if x[0] in ("POST", "PATCH", "DELETE")] == ["POST", "DELETE"]
+    ci.finish(mode, env)
+    assert [x[0] for x in api.calls if x[0] in ("POST", "PATCH", "DELETE")] == (
+        ["POST", "DELETE"] if mode == "review" else [])
+
+
+@pytest.mark.parametrize("name,turns", [("pr-review", 24), ("followup", 24), ("fix-pr", 16)])
+def test_workflow_turn_budget_preserves_job_timeout(name, turns):
+    workflow = HELPER.parents[1] / f"workflows/muse-{name}.yml"
+    document = yaml.load(workflow.read_text(), Loader=yaml.BaseLoader)
+    job = next(iter(document["jobs"].values()))
+    action = next(step for step in job["steps"] if step.get("id") == "muse")
+    args = shlex.split(action["with"]["claude_args"])
+    assert args.count("--max-turns") == 1
+    assert int(args[args.index("--max-turns") + 1]) == turns
+    assert int(job["timeout-minutes"]) == (15 if name == "fix-pr" else 10)
 
 
 def test_fix_publication_creates_separate_branch_and_refuses_existing_remote(gitroot, tmp_path):

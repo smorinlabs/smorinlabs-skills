@@ -192,14 +192,14 @@ def test_managed_ownership_moves_after_later_rules_and_repeats(tmp_path, templat
     assert installer.plan(tmp_path, "example-org", codeowner=owner) == {}
 
 
-def previous_managed(root, model, fixes):
+def previous_managed(root, model, fixes, baseline=0):
     snapshots = json.loads(installer.MANAGED.read_text())
     for name, versions in snapshots.items():
         if not fixes and name in installer.OPTIONAL:
             continue
         target = root / ("AGENTS.md" if name == "AGENTS.muse.md" else name)
         target.parent.mkdir(parents=True, exist_ok=True)
-        text = installer.render(versions[0], "example-org", model)
+        text = installer.render(versions[baseline], "example-org", model)
         if name == "AGENTS.muse.md":
             text = "# Existing project guidance\n\n" + text + "\nKeep this trailing guidance.\n"
         target.write_text(text)
@@ -207,8 +207,9 @@ def previous_managed(root, model, fixes):
 
 @pytest.mark.parametrize("model", sorted(installer.MODELS))
 @pytest.mark.parametrize("fixes", [False, True])
-def test_known_claude_install_updates_preserving_model_fixes_and_unrelated_files(tmp_path, templates, model, fixes):
-    previous_managed(tmp_path, model, fixes)
+@pytest.mark.parametrize("baseline", [0, -1], ids=["0.5.0", "0.5.1"])
+def test_known_claude_install_updates_preserving_model_fixes_and_unrelated_files(tmp_path, templates, model, fixes, baseline):
+    previous_managed(tmp_path, model, fixes, baseline)
     unrelated = tmp_path / "opencode.json"
     unrelated.write_text('{"keep":true}\n')
     before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}

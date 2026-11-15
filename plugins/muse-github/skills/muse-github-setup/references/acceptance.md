@@ -124,6 +124,16 @@ the expected interaction fails acceptance. Diagnose each paid failure before
 another bounded attempt. Do not expose real secrets or grant outsiders access
 to manufacture a negative test.
 
+The finalizer records fixed-name read-only tool invocation and correlated
+result counts in job logs. These counts establish whether a tool returned a
+result or reported an error; they do not prove the result was correct. Compare
+web results with the requested public source. Raw prompts, tool arguments,
+result contents, and execution transcripts are not published by this diagnostic.
+Reviews and follow-ups allow at most 24 model turns within a 10-minute job.
+The trusted prompt reserves a final comment update and prohibits placeholder
+comments for tool discovery. Turn limits and these instructions reduce failure
+risk; only live publication evidence establishes successful completion.
+
 GitHub must allow Actions to create PRs for manual publication. Inspect that
 repository setting only when fixes are in scope. Verify actual checks on the
 bot-created PR; inherited policies or GitHub token behavior may require a human
