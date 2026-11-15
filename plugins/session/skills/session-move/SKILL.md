@@ -177,7 +177,10 @@ session themselves. A long final message delays the move, and anything after
 | `cannot tell which … conversation` | Relay the detail. For several live Codex conversations in one directory, rerun `plan` with `--conversation <id>` once the user picks one. |
 | `not idle (status: busy)` | The other agent is mid-turn. Wait or ask the user. |
 | `background shell running` | The move would end that shell. Ask the user. |
-| `transcript changed Ns ago` | Codex and Muse have no idle signal; wait a few seconds and plan again. |
+| `transcript changed Ns ago` | The transcript has no turn records, so the helper used six quiet seconds; wait and plan again. |
+| `is mid-turn` | The other agent's transcript shows an unfinished turn. Wait or ask the user. |
+| `point at another window` | This terminal's Rex IDs name a different conversation's window. Ask the user which window to move and pass `--session` and `--window`. |
+| `no Rex window runs conversation` | Under Codex, no tab on this computer runs this conversation. Ask for `--session` and `--window`. |
 | `already in that session` | Nothing to do. |
 | `could not list the windows` | Rex did not answer. Nothing was changed; try again. |
 | `not a private directory owned by this user` | The helper's marker directory under the temp directory has the wrong owner or permissions. Relay the path; the user removes it. |
@@ -193,9 +196,18 @@ session themselves. A long final message delays the move, and anything after
   repeated.
 - **Muse prints a warning on resume** that the previous run ended without a
   clean shutdown. That is the old window closing; the conversation is intact.
-- **A self-move needs a turn-end signal.** Claude Code publishes its status;
-  for Codex and Muse the handoff waits until the transcript has been quiet for
-  six seconds.
+- **A self-move needs a turn-end signal.** Claude Code publishes its status.
+  For Codex and Muse the handoff waits for the turn-end record in the
+  transcript (Codex `task_complete`, Muse's run `terminal`), which Muse writes
+  only after reviewing its answer. Only a transcript with no turn records falls
+  back to six quiet seconds.
+- **Codex commands carry another tab's Rex IDs.** Commands Codex runs inherit
+  `REX_SESSION` and `REX_BLOCK` from its shared app-server. The helper ignores
+  them under Codex and finds the tab by `CODEX_THREAD_ID`. Do not use
+  `$REX_SESSION` or `$REX_BLOCK` yourself under Codex.
+- **Codex and Muse sandboxes block the helper.** It needs the Rex socket and
+  process listing. Expect one approval request per helper command; in a Codex
+  folder that is not trusted, escalation is refused and the move cannot run.
 
 ## Red Flags
 

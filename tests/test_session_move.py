@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,7 @@ SESSIONS = [
 def facts(**over) -> dict:
     base = {"self": False, "panes": 1, "source_host": "h1", "server_host": "h1",
             "agent": "claude", "foreground": "claude", "conversation_id": "conv-1",
-            "identity_note": "", "status": "idle", "quiet_seconds": None}
+            "identity_note": "", "status": "idle", "quiet_seconds": None, "turn_open": None}
     return {**base, **over}
 
 
@@ -226,8 +227,8 @@ class FakePorts:
     """The outside world for run_handoff: a clock, the old agent, and Rex."""
 
     def __init__(self, *, released_at=0.0, status="idle", idle_at=0.0, alive=True,
-                 dies_on_close=True, quiet_at=None, claims=None):
-        self.t = 0.0
+                 dies_on_close=True, quiet_at=None, claims=None, turn_open_until=None):
+        self.t, self.closed_at, self.turn_open_until = 0.0, None, turn_open_until
         self.claims = set() if claims is None else claims  # shared: one filesystem
         self.released_at, self.status_final, self.idle_at = released_at, status, idle_at
         self.is_alive, self.dies_on_close, self.quiet_at = alive, dies_on_close, quiet_at
@@ -251,8 +252,14 @@ class FakePorts:
     def mtime_age(self, path):
         return None if self.quiet_at is None else max(0.0, self.t - self.quiet_at)
 
+    def turn_open(self, agent, path):
+        if self.turn_open_until is None:
+            return None  # no turn records: the handoff falls back to the quiet rule
+        return self.t < self.turn_open_until
+
     def close_window(self, session, window):
         self.closed.append((session, window))
+        self.closed_at = self.t
         if self.dies_on_close:
             self.is_alive = False
 
@@ -322,6 +329,150 @@ def test_codex_waits_for_a_quiet_transcript():
     assert sm.run_handoff(cfg(agent="codex", transcript="/t/rollout.jsonl",
                               resume_argv=["codex", "resume", "conv-1"]), ports) == 0
     assert ports.t >= 10.0 + sm.QUIET_SECONDS and ports.execed == ["codex", "resume", "conv-1"]
+
+
+# ── P73-TS12: Codex and Muse turns end at their own turn-end record ──────
+# Found by the 2026-11-14 self-move test: Muse's transcript stays unchanged for 10-24 s
+# while it reviews its own answer ("Double checking"), so the six-second rule closed the
+# window mid-turn and Muse recorded the turn as orphaned_by_process_loss.
+
+
+def codex_line(kind: str) -> str:
+    return json.dumps({"type": "event_msg", "payload": {"type": kind, "turn_id": "t1"}})
+
+
+def muse_line(kind: str) -> str:
+    return json.dumps({"payload_type": "runtime.session",
+                       "payload": {"kind": "run", "run_id": "r1", "event": {"kind": kind}}})
+
+
+OTHER = json.dumps({"type": "response_item", "payload": {"type": "message"}})
+
+
+@pytest.mark.parametrize(
+    "agent, lines, expected",
+    [
+        ("codex", [codex_line("task_started"), OTHER], True),
+        ("codex", [codex_line("task_started"), OTHER, codex_line("task_complete")], False),
+        ("codex", [codex_line("task_started"), codex_line("turn_aborted")], False),
+        ("muse", [muse_line("started"), muse_line("assistant_message_committed")], True),
+        ("muse", [muse_line("started"), muse_line("terminal")], False),
+        ("muse", [muse_line("terminal"), muse_line("started")], True),
+        ("codex", [OTHER, "not json"], None),  # no turn records: unknown, not "ended"
+    ],
+)
+def test_turn_open_reads_the_last_turn_record(agent, lines, expected):
+    assert sm.turn_open(agent, lines) is expected
+
+
+def test_a_partial_last_line_is_left_for_the_next_read(tmp_path):
+    t = tmp_path / "session.jsonl"
+    t.write_text(muse_line("started") + "\n" + muse_line("terminal")[:20])
+    reader = sm.TurnReader()
+    assert reader.open("muse", str(t)) is True
+    t.write_text(muse_line("started") + "\n" + muse_line("terminal") + "\n")
+    assert reader.open("muse", str(t)) is False
+
+
+def test_a_partial_record_after_a_finished_turn_is_not_the_end_of_the_turn(tmp_path):
+    # Review of PR #116: a new turn being written must not read as the old one's end.
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
+    reader = sm.TurnReader()
+    assert reader.open("codex", str(t)) is False
+    t.write_text(t.read_text() + codex_line("task_started")[:15])
+    assert reader.open("codex", str(t)) is True
+
+
+def test_a_quiet_transcript_with_an_open_turn_is_not_the_end_of_the_turn():
+    ports = FakePorts(quiet_at=0.0, turn_open_until=30.0)
+    assert sm.run_handoff(cfg(agent="muse", transcript="/t/session.jsonl",
+                              resume_argv=["muse", "resume", "conv-1"]), ports) == 0
+    assert ports.closed and ports.closed_at >= 30.0  # not at QUIET_SECONDS
+
+
+def test_an_unknown_transcript_format_falls_back_to_the_quiet_rule():
+    ports = FakePorts(quiet_at=10.0, turn_open_until=None)
+    assert sm.run_handoff(cfg(agent="codex", transcript="/t/rollout.jsonl",
+                              resume_argv=["codex", "resume", "conv-1"]), ports) == 0
+    assert ports.closed_at >= 10.0 + sm.QUIET_SECONDS
+
+
+def test_another_window_mid_turn_is_refused_even_when_its_transcript_is_quiet():
+    out = sm.refusals(facts(agent="muse", status=None, quiet_seconds=30.0, turn_open=True))
+    assert len(out) == 1 and "mid-turn" in out[0]
+    assert sm.refusals(facts(agent="muse", status=None, quiet_seconds=1.0, turn_open=False)) == []
+
+
+# ── P73-TS11: a self-move finds the caller's own window ──────────────────
+# Found by the 2026-11-14 self-move test: commands Codex runs inherit REX_SESSION and
+# REX_BLOCK from Codex's shared app-server, so they name the pane that server started in,
+# not the caller's tab. CODEX_THREAD_ID and CLAUDE_CODE_SESSION_ID name the caller.
+
+
+def cand(conv, *, argv="codex", session="session:s1", window="window:w1", block="block:b1"):
+    return {"session_id": session, "window_id": window, "block_id": block,
+            "conversation_id": conv, "argv": argv}
+
+
+def test_codex_finds_its_window_by_conversation():
+    hit = sm.locate_by_conversation(
+        [cand("other", window="window:w0"), cand("01a1", window="window:w9")], "01a1")
+    assert hit["window_id"] == "window:w9"
+
+
+def test_a_tie_is_settled_by_the_resume_argument():
+    found = sm.locate_by_conversation(
+        [cand(None, window="window:w1", argv="codex"),
+         cand(None, window="window:w2", argv="codex resume 01a1")], "01a1")
+    assert found["window_id"] == "window:w2"
+
+
+@pytest.mark.parametrize(
+    "cands, needle",
+    [([], "no Rex window runs"),
+     ([cand("01a1", window="window:w1"), cand("01a1", window="window:w2")], "2 Rex windows")],
+)
+def test_a_conversation_without_exactly_one_window_is_refused(cands, needle):
+    with pytest.raises(sm.MoveRefusal, match=needle):
+        sm.locate_by_conversation(cands, "01a1")
+
+
+def test_rex_ids_that_point_at_another_conversation_are_refused():
+    # The stale pane runs an agent too; without this check its window would move, unchecked.
+    with pytest.raises(sm.MoveRefusal, match="another window"):
+        sm.check_caller("claude", "conv-other", "claude", "conv-mine")
+    sm.check_caller("claude", "conv-mine", "claude", "conv-mine")
+    sm.check_caller("claude", "conv-mine", None, None)  # no caller named: nothing to compare
+
+
+def test_rex_ids_that_point_at_another_agent_are_refused():
+    # Review of PR #116: a Claude caller whose IDs name a Codex pane must not move it.
+    with pytest.raises(sm.MoveRefusal, match="another window"):
+        sm.check_caller("codex", "conv-mine", "claude", "conv-mine")
+
+
+@pytest.mark.parametrize(
+    "pane_block, own_block, agent, conv, expected",
+    [("block:b1", "block:b1", "claude", "c1", True),    # Rex IDs name this pane
+     ("block:b2", None, "codex", "c1", True),           # Codex named its own tab explicitly
+     ("block:b2", None, "codex", "c2", False),          # Codex moves another Codex tab
+     ("block:b2", None, "claude", "c1", False)],        # same ID, different agent
+)
+def test_self_is_this_pane_or_the_callers_own_conversation(pane_block, own_block, agent, conv,
+                                                           expected):
+    # Review of PR #116: under Codex, --session/--window naming its own tab is still a self-move.
+    assert sm.is_own_pane(pane_block, own_block, agent, conv, "codex", "c1") is expected
+
+
+@pytest.mark.parametrize(
+    "env, expected",
+    [({"CODEX_THREAD_ID": "c1"}, ("codex", "c1")),
+     ({"CLAUDE_CODE_SESSION_ID": "k1"}, ("claude", "k1")),
+     ({}, (None, None))],
+)
+def test_the_caller_is_named_by_its_agent(env, expected):
+    assert sm.caller_identity(env) == expected
 
 
 # ── P73-TS09: one resume per source, release and abort exclude each other ──

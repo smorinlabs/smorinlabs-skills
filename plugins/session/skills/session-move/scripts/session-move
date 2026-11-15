@@ -75,7 +75,7 @@ def launch_shell(env_shell: str | None) -> str:
 
 
 TURN_ENDED =("idle", "shell")  # Claude Code registry statuses with no turn in flight
-QUIET_SECONDS = 6               # Codex and Muse have no status: a transcript quiet this long
+QUIET_SECONDS = 6               # fallback only: a transcript with no turn records, quiet this long
 AUTO_LABEL = re.compile(r"^Window [0-9a-f]{8}$")  # the name Rex gives an unnamed window
 POLL = 0.5
 ARM_TIMEOUT, RELEASE_TIMEOUT, IDLE_TIMEOUT, EXIT_TIMEOUT, RESUME_TIMEOUT = 20, 600, 300, 20, 90
@@ -128,6 +128,11 @@ def refusals(f: dict) -> list[str]:
             elif f["status"] != "idle":
                 out.append(f"the agent is not idle (status: {f['status']}); moving it now would "
                            "cut off its current turn")
+        elif f.get("turn_open") is True:
+            out.append(f"the {NAMES[agent]} agent is mid-turn (its transcript has no turn-end "
+                       "record yet); wait until it finishes")
+        elif f.get("turn_open") is False:
+            pass
         elif f["quiet_seconds"] is None:
             out.append(f"cannot tell whether the {NAMES[agent]} agent is idle (no transcript found)")
         elif f["quiet_seconds"] < QUIET_SECONDS:
@@ -182,6 +187,120 @@ def match_conversation(rows: list[dict], pid: int | None, cwd: str | None,
                   f"pass --conversation with one of: {ids}")
 
 
+def turn_open(agent: str, lines) -> bool | None:
+    """Is the agent's latest turn still running, by its own transcript records?
+
+    Codex writes event_msg task_started ... task_complete (or turn_aborted). Muse writes
+    a run "started" ... "terminal" pair, and the terminal record comes only after its
+    answer review ("Double checking"), which can leave the file unchanged for 20 s.
+    None when no turn record is seen, so the caller falls back to the quiet rule.
+    """
+    state = None
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(rec, dict):
+            continue
+        payload = rec.get("payload") if isinstance(rec.get("payload"), dict) else {}
+        if agent == "codex" and rec.get("type") == "event_msg":
+            kind = payload.get("type")
+            if kind == "task_started":
+                state = True
+            elif kind in ("task_complete", "turn_aborted"):
+                state = False
+        elif agent == "muse" and rec.get("payload_type") == "runtime.session" \
+                and payload.get("kind") == "run":
+            kind = (payload.get("event") or {}).get("kind")
+            if kind == "started":
+                state = True
+            elif kind == "terminal":
+                state = False
+    return state
+
+
+class TurnReader:
+    """turn_open over a growing transcript, reading only what was appended since the last
+    call and never a partial last line."""
+
+    def __init__(self) -> None:
+        self.offset: dict[str, int] = {}
+        self.state: dict[str, bool | None] = {}
+
+    def open(self, agent: str, path: str) -> bool | None:
+        try:
+            with open(path, "rb") as fh:
+                size = fh.seek(0, os.SEEK_END)
+                start = self.offset.get(path, 0)
+                if size < start:  # replaced or truncated: read it again from the start
+                    start, self.state[path] = 0, None
+                fh.seek(start)
+                data = fh.read()
+        except OSError:
+            return self.state.get(path)
+        complete = data[:data.rfind(b"\n") + 1]
+        self.offset[path] = start + len(complete)
+        found = turn_open(agent, complete.decode("utf-8", "replace").splitlines())
+        if found is not None:
+            self.state[path] = found
+        if len(complete) < len(data):
+            return True  # a record is being written: the agent is not between turns
+        return self.state.get(path)
+
+
+def caller_identity(env) -> tuple[str | None, str | None]:
+    """The agent and conversation that ran this helper, as the agent itself names them.
+
+    Codex is checked first: its shared app-server can carry another agent's variables
+    (and stale REX_SESSION/REX_BLOCK) from the terminal it was started in.
+    """
+    if env.get("CODEX_THREAD_ID"):
+        return "codex", env["CODEX_THREAD_ID"]
+    if env.get("CLAUDE_CODE_SESSION_ID"):
+        return "claude", env["CLAUDE_CODE_SESSION_ID"]
+    return None, None
+
+
+def locate_by_conversation(candidates: list[dict], conversation_id: str) -> dict:
+    """The one Rex pane whose agent runs conversation_id.
+
+    A candidate matches by the conversation the helper attributed to it, or by a
+    `resume <id>` argument in its command line, which settles a directory tie.
+    """
+    hits = {c["window_id"]: c for c in candidates
+            if c.get("conversation_id") == conversation_id
+            or conversation_id in (c.get("argv") or "").split()}
+    if not hits:
+        raise MoveRefusal(f"no Rex window runs conversation {conversation_id} on this computer; "
+                          "pass --session and --window")
+    if len(hits) > 1:
+        raise MoveRefusal(f"{len(hits)} Rex windows run conversation {conversation_id}; "
+                          "pass --session and --window")
+    return next(iter(hits.values()))
+
+
+def check_caller(pane_agent: str | None, pane_conversation: str | None,
+                 caller_agent: str | None, caller_conversation: str | None) -> None:
+    """Refuse a self-move whose Rex IDs name a pane running another agent or conversation."""
+    if caller_conversation and (pane_agent != caller_agent
+                                or pane_conversation != caller_conversation):
+        raise MoveRefusal(
+            f"this terminal's Rex IDs (REX_BLOCK) point at another window, which runs "
+            f"{NAMES.get(pane_agent, pane_agent)} conversation {pane_conversation}, not this "
+            f"agent's {caller_conversation}; pass --session and --window")
+
+
+def is_own_pane(pane_block: str | None, own_block: str | None, agent: str | None,
+                conversation_id: str | None, caller_agent: str | None,
+                caller_conversation: str | None) -> bool:
+    """The pane is the caller's own: Rex IDs name it, or it runs the caller's conversation."""
+    if own_block and pane_block == own_block:
+        return True
+    return bool(caller_conversation) and agent == caller_agent \
+        and conversation_id == caller_conversation
+
+
 def build_launch(plan: dict, python: str, script: str, release_file: str) -> list[str]:
     """The Rex command that creates the destination window running the handoff."""
     shell = launch_shell(os.environ.get("SHELL"))
@@ -232,6 +351,9 @@ def turn_ended(cfg: dict, ports) -> bool:
     if cfg["agent"] == "claude":
         return ports.claude_status(cfg["old_pid"]) in TURN_ENDED
     if cfg.get("transcript"):
+        state = ports.turn_open(cfg["agent"], cfg["transcript"])
+        if state is not None:
+            return not state
         age = ports.mtime_age(cfg["transcript"])
         return age is not None and age >= QUIET_SECONDS
     return True
@@ -281,8 +403,14 @@ def run_handoff(cfg: dict, ports) -> int:
 class Ports:
     """The outside world for run_handoff; tests replace it with a fake."""
 
+    def __init__(self) -> None:
+        self.turns = TurnReader()
+
     def now(self) -> float:
         return time.monotonic()
+
+    def turn_open(self, agent: str, path: str) -> bool | None:
+        return self.turns.open(agent, path)
 
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
@@ -400,6 +528,30 @@ def inventory_rows(agent: str) -> tuple[list[dict], str]:
     return (data if isinstance(data, list) else data.get("sessions", [])), ""
 
 
+def codex_candidates(sessions: list[dict], host_id: str | None) -> list[dict]:
+    """Every pane on this computer running Codex, with the conversation it runs."""
+    rows, _ = inventory_rows("codex")
+    out = []
+    for s in sessions:
+        for b in list_blocks(s["session_id"]):
+            if host_id and b.get("host_id") != host_id:
+                continue
+            process = block_process(s["session_id"], b["block_id"])
+            if detect_agent(process) != "codex":
+                continue
+            fg = process.get("foreground") or {}
+            row, _ = match_conversation(rows, fg.get("pid"), fg.get("cwd"))
+            try:
+                argv = subprocess.run(["ps", "-o", "command=", "-p", str(fg.get("pid"))],
+                                      capture_output=True, text=True, timeout=5).stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                argv = ""
+            out.append({"session_id": s["session_id"], "window_id": b.get("window_id"),
+                        "block_id": b["block_id"], "argv": argv,
+                        "conversation_id": (row or {}).get("id")})
+    return out
+
+
 def single_app_client() -> str | None:
     clients = (_run_json(["rex", "client", "ls", "--json"]) or {}).get("clients", [])
     apps = [c["client_id"] for c in clients if (c.get("info") or {}).get("kind") == "app"]
@@ -419,6 +571,15 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
         raise MoveRefusal("cannot reach the Rex server (`rex whoami --json` failed)")
     sessions = (_run_json(["rex", "session", "list", "--json"]) or {}).get("sessions", [])
     own_session, own_block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
+    caller_agent, caller_conversation = caller_identity(os.environ)
+    if caller_agent == "codex":
+        # Codex's REX_* variables come from its shared app-server, not from this tab.
+        own_session = own_block = None
+        if not (session_arg or window_arg):
+            hit = locate_by_conversation(
+                codex_candidates(sessions, whoami.get("host_id")), caller_conversation)
+            own_session, own_block = hit["session_id"], hit["block_id"]
+            conversation_arg = conversation_arg or caller_conversation
 
     session_id = own_session
     if session_arg:
@@ -447,7 +608,7 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
     agent, pid = detect_agent(process), fg.get("pid")
     label = next((w.get("label") for w in windows if w.get("window_id") == window_id), None)
 
-    conversation_id = status = transcript = quiet = None
+    conversation_id = status = transcript = quiet = open_turn = None
     note = ""
     if agent == "claude":
         reg = claude_registry(pid) or {}
@@ -460,13 +621,17 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
         if row:
             conversation_id, transcript = row.get("id"), row.get("transcript")
             quiet = Ports().mtime_age(transcript) if transcript else None
+            open_turn = TurnReader().open(agent, transcript) if transcript else None
 
-    is_self = bool(own_block) and block.get("block_id") == own_block
+    if own_block and block.get("block_id") == own_block:
+        check_caller(agent, conversation_id, caller_agent, caller_conversation)
+    is_self = is_own_pane(block.get("block_id"), own_block, agent, conversation_id,
+                          caller_agent, caller_conversation)
     reasons = refusals({
         "self": is_self, "panes": len(panes), "source_host": block.get("host_id"),
         "server_host": whoami.get("host_id"), "agent": agent, "foreground": fg.get("argv0"),
         "conversation_id": conversation_id, "identity_note": note, "status": status,
-        "quiet_seconds": quiet})
+        "quiet_seconds": quiet, "turn_open": open_turn})
     if not fg.get("cwd") and agent:
         reasons.append("Rex did not report the agent's working directory")
     if reasons:
