@@ -2683,7 +2683,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       the variables decide. Bump session 0.18.1 → 0.18.2.
 - [ ] [P73-T16] Release session 0.18.2
 
-## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.2)
+## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.3)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
 with the official Anthropic Action while preserving Meta Muse routing. Add inline
 findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
@@ -2697,7 +2697,8 @@ eligible organization repositories in small verified batches.
 - [x] [P74-T04] Validate local behavior, workflow syntax, skill loading, and independent implementation review; resolve findings before the pilot.
 - [x] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement (0.5.0 in #119).
 - [x] [P74-T08] Repair late pilot review findings, validate managed-version updates, and land 0.5.1 before live acceptance (#120; consumer repair smorinlabs/lost-sessions#32).
-- [ ] [P74-T09] Add sanitized read-only tool execution counts and repair the pilot's turn-budget exhaustion before retrying live acceptance.
+- [x] [P74-T09] Add sanitized read-only tool execution counts and repair the pilot's turn-budget exhaustion before retrying live acceptance (#121; consumer smorinlabs/lost-sessions#35).
+- [ ] [P74-T10] Repair duplicate inline replies and missing final publication; record observed native WebSearch incompatibility; land and repeat affected pilot checks.
 - [ ] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on one live pilot.
 - [ ] [P74-T07] Migrate remaining eligible repositories incrementally, recording exact installation and live-verification evidence.
 
@@ -2724,4 +2725,16 @@ follow-up budget, and guidance against placeholder comments for tool discovery.
 Its 246 focused tests, all three workflow lint checks, generated manifests, and
 name/whitespace checks pass. Exact 0.5.1 output upgrades with 3 changes and zero
 on repeat, retaining the model, optional fixes, and unrelated configuration.
-Source landing, live pilot acceptance, and rollout remain pending.
+Version 0.5.2 landed in #121 and its pilot update in smorinlabs/lost-sessions#35.
+Automatic inline review and summary completion passed. Two independent top-level
+follow-ups passed with overlapping execution. WebFetch passed; native WebSearch
+was permitted but Meta rejected its `max_uses` field. An inline follow-up answered
+in the correct discussion but also created an unwanted separate answer thread.
+Version 0.5.3 restricts only inline follow-up publication to its existing response,
+preserving read-only tools and new findings from other review entry points.
+It also publishes a successful final SDK response when no updater was attempted,
+with strict comment identity and readback checks; failed updater attempts still
+fail. All 286 focused tests, three workflow lint checks, manifest/name/whitespace
+checks, and three harness load checks pass. An exact 0.5.2 installation upgrades
+with one helper change and zero changes on repeat. Source landing, affected live
+acceptance, and rollout remain pending.

@@ -36,6 +36,11 @@ Editing/writing requires the separate optional fix workflow. Web tools still
 need provider/network support; local permission tests do not establish real
 WebSearch/WebFetch success.
 
+Live acceptance with the pinned runtime confirmed WebFetch. Native WebSearch
+reaches Muse but fails because Meta rejects the CLI's `max_uses` request field;
+it remains permitted. The [security reference](../../plugins/muse-github/skills/muse-github-setup/references/security.md)
+records the compatibility limit and source.
+
 The finalizer logs read-only tool-call counts and correlated success/error counts.
 These diagnostics omit tool arguments and response contents. A successful tool
 result establishes execution; verify the returned information separately.
@@ -48,9 +53,16 @@ replace one another. They may complete in a different order from their requests.
 The helper verifies publication and correct discussion placement. When upstream
 progress falls back to top level for a child reply, the helper relocates the
 completed answer to the validated root and removes the fallback after readback.
+When Muse finishes without calling the comment updater, the helper can publish
+its successful final response to the uniquely identified, run-linked bot comment.
+It verifies the saved body before completing. Failed updater calls and empty
+final responses still fail; initial progress text never counts as an answer.
 The pilot must prove this temporary progress behavior. Tests do not run in the
 credential-bearing model step. Manual fixes use local file edits, then the helper
 validates and creates a separate branch/PR for human review.
+
+Inline follow-ups stay in their existing discussion and cannot create a second
+review thread. A top-level `@muse` request can ask for new inline findings.
 
 ## Models and trust
 

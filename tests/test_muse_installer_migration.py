@@ -199,7 +199,7 @@ def previous_managed(root, model, fixes, baseline=0):
             continue
         target = root / ("AGENTS.md" if name == "AGENTS.muse.md" else name)
         target.parent.mkdir(parents=True, exist_ok=True)
-        text = installer.render(versions[baseline], "example-org", model)
+        text = installer.render(versions[min(baseline, len(versions) - 1)], "example-org", model)
         if name == "AGENTS.muse.md":
             text = "# Existing project guidance\n\n" + text + "\nKeep this trailing guidance.\n"
         target.write_text(text)
@@ -207,7 +207,7 @@ def previous_managed(root, model, fixes, baseline=0):
 
 @pytest.mark.parametrize("model", sorted(installer.MODELS))
 @pytest.mark.parametrize("fixes", [False, True])
-@pytest.mark.parametrize("baseline", [0, -1], ids=["0.5.0", "0.5.1"])
+@pytest.mark.parametrize("baseline", [0, 1, 2], ids=["0.5.0", "0.5.1", "0.5.2"])
 def test_known_claude_install_updates_preserving_model_fixes_and_unrelated_files(tmp_path, templates, model, fixes, baseline):
     previous_managed(tmp_path, model, fixes, baseline)
     unrelated = tmp_path / "opencode.json"

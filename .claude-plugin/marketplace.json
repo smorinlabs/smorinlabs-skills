@@ -157,7 +157,7 @@
       "name": "muse-github",
       "source": "./plugins/muse-github",
       "description": "Install member-authorized PR reviews, inline findings, comment follow-ups, and optional fix PRs with the official Claude Code Action and Meta Muse",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "author": {
         "name": "Steve Morin"
       },
