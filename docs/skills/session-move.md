@@ -74,8 +74,14 @@ computer (`session-handoff`), and not copying the conversation into a worktree
   repeated on resume.
 - Muse prints a warning on resume that its previous run ended without a clean
   shutdown. The conversation is intact.
-- Codex and Muse publish no idle signal, so the waiting program treats a
-  transcript that has been quiet for six seconds as the end of a turn.
+- For Codex and Muse, the waiting program reads the turn-end record in the
+  transcript. Only a transcript with no turn records falls back to six quiet
+  seconds.
+- Under Codex, the skill finds its own tab by the conversation ID, because the
+  Rex IDs that Codex passes to commands belong to another tab.
+- Codex and Muse ask for approval before each helper command, because the
+  helper needs the Rex socket. In a Codex folder that is not trusted, the move
+  cannot run.
 - If the source window was its session's only window, that session is left
   empty and the skill says so.
 

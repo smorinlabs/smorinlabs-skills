@@ -2595,7 +2595,7 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
 
-## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.0)
+## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.1)
 **Goal/Requirement**: Move a running agent conversation from one Rex session to another on the same
 computer (owner request 2026-11-14). Rex cannot move a window between sessions, so the skill recreates
 it: same agent, same conversation ID, same working directory, same window name, then the old window closes.
@@ -2627,6 +2627,11 @@ it: same agent, same conversation ID, same working directory, same window name, 
 - [x] [P73-TS09] Test: two released handoffs for one source resume once; release and abort exclude each other
 - [x] [P73-TS10] Test: the marker directory must be private and owned by the user; a failed window listing is
       not treated as an empty session
+- [x] [P73-TS11] Test: a self-move under Codex finds its tab by `CODEX_THREAD_ID`; Rex IDs that name another
+      conversation's pane are refused; zero or two matching tabs are refused
+- [x] [P73-TS12] Test: Codex and Muse turns end at their own turn-end record (`task_complete` or `turn_aborted`;
+      Muse run `terminal`), not at six quiet seconds; a partial last line is not read; only a transcript with no
+      turn records falls back to the quiet rule
 - [x] [P73-T01] `scripts/session-move` (plan, arm, go, abort, handoff) and `SKILL.md`
 - [x] [P73-T02] Live checks of the helper on throwaway conversations, 2026-11-14: Claude Code (move, abort, release
       while busy), Codex, and Muse each resumed the same conversation in a new session with the old window closed.
@@ -2652,3 +2657,14 @@ it: same agent, same conversation ID, same working directory, same window name, 
       (3) the marker directory is checked for owner and mode; (4) a failed window listing no longer counts as an
       empty session, so cleanup cannot kill a session it could not inspect; (5) `SKILL.md` reruns `plan` when
       the user picks a near-match session.
+- [x] [P73-T11] Self-move test with agents following `SKILL.md`, 2026-11-14, sessions `test-source` and
+      `test-destination`. Claude Code (Haiku) passed: old tab closed, same conversation resumed with its history,
+      `/exit` left a shell. Codex failed: its commands inherit `REX_SESSION`/`REX_BLOCK` from Codex's shared
+      app-server, so `plan` looked for a closed pane. Muse moved but its turn was cut off: Muse's transcript stays
+      unchanged for 10-24 s while it reviews its answer, so the six-second rule fired mid-turn and Muse recorded
+      the turn as `orphaned_by_process_loss`.
+- [x] [P73-T12] Fix both (owner decision 2026-11-14, option A): under Codex, `plan` finds the tab by
+      `CODEX_THREAD_ID`; any self-move whose Rex pane runs a different conversation than the caller's
+      (`CODEX_THREAD_ID` or `CLAUDE_CODE_SESSION_ID`) is refused; the handoff and the busy check read each agent's
+      turn-end record. Bump session 0.18.0 → 0.18.1.
+- [ ] [P73-T13] Rerun the Codex and Muse self-moves on the fixed helper after merge and relink
