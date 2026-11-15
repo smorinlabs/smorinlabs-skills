@@ -2,95 +2,82 @@
 
 ## Meta model key
 
-Use the repository Actions secret `META_MUSE_CI_API_KEY`. It identifies the
-provider, model family, and CI use without colliding with unrelated Meta keys.
-This is a project convention, not an assertion that Meta requires that name.
-The cookbook uses `MODEL_API_KEY`; the customized provider references
-`{env:META_MUSE_CI_API_KEY}` instead. Keep those two names aligned.
+Use repository Actions secret `META_MUSE_CI_API_KEY`. This is a project naming
+convention. Preserve the owner's chosen key scope: one Meta key per GitHub owner
+or one per repository. Do not copy a key across owners, rotate an existing key,
+or change scope without authorization. Keep values out of chat, logs, command
+arguments, repository files, and generated settings.
 
-Use the key scope the owner chose: one Meta API key per GitHub owner, shared
-by its repositories, or a dedicated key per repository. Store it in the
-owner's secret manager. Never copy a key across owners or invent a scope the
-owner did not choose. GitHub secret names may be reused across repositories because each
-repository has its own secret scope. Distinct names within one repository would
-be needed for separate CI environments; this template has one Muse CI key.
+The model step supplies that secret both as `ANTHROPIC_AUTH_TOKEN` for Meta bearer
+authentication and as action `anthropic_api_key` for its launch check. The endpoint
+is `https://api.meta.ai`, without `/v1`. No Anthropic key or Claude OAuth token is
+needed. `classify_inline_comments: 'false'` is mandatory so the optional classifier
+does not send this key to Anthropic. Sources:
+[Meta configuration](https://dev.meta.ai/docs/coding-agents),
+[bearer gateway action recipe](https://code.claude.com/docs/en/llm-gateway-connect#github-actions).
 
-If the optional private skill `repo-secrets` is installed, inspect its supported
-apps before delegating. Its Muse interface is:
+Preserve the model/tier in existing policy. A fresh default is
+`muse-spark-1.3-contributor`, whose content may be used for training. A private
+repository without an established tier choice requires a specific owner decision;
+recommend the standard `muse-spark-1.3` tier. Do not infer consent from a public
+repository's choice. Verify current tier terms when that decision is needed:
+[Meta pricing/data-use policy](https://dev.meta.ai/docs/pricing-rate-limits).
 
-```text
-scripts/repo_secrets set --repo OWNER/REPO --app muse-ci --workflow-root WORKTREE
-scripts/repo_secrets status --repo OWNER/REPO --app muse-ci --workflow-root WORKTREE
-scripts/repo_secrets set --repo OWNER/REPO --app muse-ci --workflow-root WORKTREE --dry-run
-```
+## Optional secret-manager provisioner
 
-Run the `--dry-run` form first: it shows whether a 1Password mapping exists
-(`missing — will prompt`) without reading or writing any secret.
+If `repo-secrets` is installed, inspect its actual supported apps and workflow
+detection first. A compatible version may provide `muse-ci` and `muse-ci-members`.
+Do not assume an older OpenCode detector recognizes the new workflows. Resolve
+its executable from the installed skill; run its dry-run/status paths before a
+write. Supply the exact owner/repository and prepared workflow root when supported.
+Preserve existing secrets unless rotation was requested. A missing mapping is a
+request for a non-secret reference, not permission to reuse another owner's key.
+A locked vault requires a reader unlock task; do not request the secret itself.
 
-Resolve `scripts/repo_secrets` relative to that installed skill. Replace
-`OWNER/REPO` with the verified GitHub name and `WORKTREE` with the setup
-worktree's absolute root. The private provisioner detects the action on this
-worktree even before the workflow exists on the default branch. Its mapping is
-keyed by GitHub owner, like its other apps. An absent mapping is a request for
-the non-secret reference, not permission to reuse another owner's key.
-Existing secrets are preserved unless rotation is explicitly requested.
+No private plugin is required. If the installed provisioner is incompatible, use
+the public fallback and report that limitation. Do not modify another private
+skill implicitly during this installation.
 
-An older private skill without Muse support is unavailable for this integration.
-Recommend updating it separately when appropriate and use the public fallback.
-Never automatically author another private skill during an installation.
+## Secure manual fallback
 
-## Public fallback
+Give the reader a self-contained task block naming the real target URL
+`https://github.com/OWNER/REPO/settings/secrets/actions/new`, replacing owner/repo
+with verified values. The reader obtains the intended key through
+`https://dev.meta.ai/` and adds `META_MUSE_CI_API_KEY` under **Repository secrets**.
+The value is entered only in GitHub or an approved local secret-manager flow.
 
-Give the user a self-contained task block with the **actual target URL**
-`https://github.com/OWNER/REPO/settings/secrets/actions/new`. Explain that they
-create a repository-specific Meta API key at `https://dev.meta.ai/`, then add
-`META_MUSE_CI_API_KEY` under **Repository secrets**, with its value entered only
-in GitHub or an approved local secret-manager flow. Replace the owner/repo
-placeholders before delivery. The user supplies the key through that secure
-surface, never this conversation.
+After completion, read back exact secret names through the connected service or
+`gh secret list --repo OWNER/REPO --json name` with a resolved executable. Never
+read values or dump the environment. If metadata access fails, state that limit
+and request only the non-secret presence result. Presence proves neither validity,
+model access, account/tier suitability, nor billing. An authorized live workflow
+establishes successful authentication separately.
 
-Wait for their completion report. Then use `gh secret list --repo OWNER/REPO
---json name` to verify the exact name exists. If access prevents that read,
-report the limitation and request the non-secret presence result from the user.
-Do not claim verification merely because the user said they finished. Do not
-print values, run a broad environment dump, or place a key in command arguments.
+## Membership App and repository token
 
-Secret metadata proves only that a name is present. Correct account, model
-access, billing, tier, and key validity are established by a later authorized
-workflow run. The contributor model's data-use policy is a separate owner
-decision; a low price is not evidence of private-code suitability.
+The dedicated membership App has Organization **Members: Read-only** and no
+other permissions. Use its existing installation and credential scope. Creating
+an App or broadening repository/organization access requires the corresponding
+owner decision; do not add a privileged App to make reviews work.
 
-## GitHub membership App
-
-The helper checks `GET /orgs/ORG/members/USER` with `MUSE_MEMBERS_TOKEN`. The
-repository `GITHUB_TOKEN` cannot prove private membership: GitHub answers a
-non-member requester with a redirect, which the helper refuses. Each workflow
-therefore mints `MUSE_MEMBERS_TOKEN` in its first credential step from a
-dedicated organization GitHub App:
-
-| Setting | Value |
+| Credential | Use |
 |---|---|
-| App name | `muse-ci-members-ORG` |
-| Permissions | Organization permission **Members: Read-only**; nothing else |
-| Webhook | Inactive |
-| Installable on | Only this account (the organization) |
-| Repository secrets | `MUSE_CI_MEMBERS_APP_CLIENT_ID`, `MUSE_CI_MEMBERS_APP_PRIVATE_KEY` |
+| `MUSE_CI_MEMBERS_APP_CLIENT_ID` | Membership App identifier, passed only to token minting |
+| `MUSE_CI_MEMBERS_APP_PRIVATE_KEY` | Membership App private key, passed only to token minting |
+| `MUSE_MEMBERS_TOKEN` | Short-lived minted token, passed only to helper authorization |
+| `github.token` | Repository-scoped review comments and optional trusted fix publication |
 
-Do not reuse a release or other privileged App: its key would reach the
-authorization step with far more than membership read. The minted token lasts
-about an hour and is revoked when the job ends. If the private `repo-secrets`
-skill supports `--app muse-ci-members`, use it after the setup PR merges (its
-detection reads the default branch, so it takes no `--workflow-root`):
-`scripts/repo_secrets set --repo OWNER/REPO --app muse-ci-members`, with
-`--dry-run` first. Both apps read 1Password, so ask the owner to unlock it
-before the real `set`. A locked vault fails with "check 1Password access".
-Otherwise hand the owner the two secret names and verify presence with
-`gh secret list`. Never request the key in chat.
-The mint step passes `owner:` and requests an organization permission, so a
-selected-repositories App installation needs no per-repository addition.
-Personal-account repositories are out of scope: the workflows skip them, and
-personal accounts have no organization membership to check.
+Do not reuse release or other privileged App keys. Missing membership credentials
+or an unverifiable private membership must fail before model use. Read back names,
+never key material. Personal-owner repositories are excluded because they have
+no organization membership to verify.
 
-Sources: [Meta cookbook](https://github.com/meta-models/meta-model-cookbook/tree/c5a9882b4c7f3900e9c93122249d37317c8abff4/03_use_cases/11_github_repo_agent),
-[Meta pricing and tier policy](https://dev.meta.ai/docs/pricing-rate-limits),
-[GitHub membership API](https://docs.github.com/en/rest/orgs/members#check-organization-membership-for-a-user).
+Pass the repository token explicitly as action `github_token`; this skips the
+Claude GitHub App exchange. Review/follow-up jobs need contents read and PR write;
+manual publication additionally needs contents write. No Anthropic App installation
+or OIDC permission is needed for this explicit-token path. See
+[security](security.md) for capability limits and optional CI metadata permissions.
+
+Installing credentials does not enable workflows. Preserve `MUSE_CI_ENABLED` until
+the replacement is ready and activation is authorized; inspect all other consumers
+before changing that shared variable.

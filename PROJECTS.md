@@ -2677,6 +2677,36 @@ it: same agent, same conversation ID, same working directory, same window name, 
       reproduced and fixed: (1) `caller_identity` preferred an inherited `CODEX_THREAD_ID`, so a Claude Code agent
       started under Codex would pick its parent's tab; (2) any command-line word matching the conversation ID broke a
       directory tie; (3) `TurnReader` returned a cached "ended" after a failed read and kept its offset across a
-      replaced file. Known limit: inside Codex's sandbox `ps` reports no ancestry, so the variables decide. Bump session
-      0.18.1 → 0.18.2.
+      replaced file. Review of #118 added four more, also fixed: the file identity is saved only with a successful
+      read; a failed read counts as busy, never the quiet rule; only the `resume <id>` subcommand counts; a Codex
+      caller without `CODEX_THREAD_ID` is refused. Known limit: inside Codex's sandbox `ps` reports no ancestry, so
+      the variables decide. Bump session 0.18.1 → 0.18.2.
 - [ ] [P73-T16] Release session 0.18.2
+
+## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.0)
+**Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
+with the official Anthropic Action while preserving Meta Muse routing. Add inline
+findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
+and guarded optional fix PRs. Validate the skill before a live pilot, then migrate
+eligible organization repositories in small verified batches.
+
+### Tests & Tasks
+- [x] [P74-T01] Inspect pinned upstream Action, gateway configuration, runtime/tool behavior, and installed consumers.
+- [x] [P74-T02] Implement installer migration, trusted workflows/runtime, broad read-only tools, and regression tests.
+- [x] [P74-T03] Refresh skill instructions, security/acceptance/provenance/secrets references, docs page, README row, plugin version, and manifests.
+- [x] [P74-T04] Validate local behavior, workflow syntax, skill loading, and independent implementation review; resolve findings before the pilot.
+- [ ] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement.
+- [ ] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on one live pilot.
+- [ ] [P74-T07] Migrate remaining eligible repositories incrementally, recording exact installation and live-verification evidence.
+
+### Validation status
+The final focused Muse suite passes 169 checks. All three workflows pass actionlint;
+generated manifests and name/whitespace checks pass. Real Claude CLI permission and
+symlink probes pass 11 and 6 checks respectively; four pinned Action parser cases pass.
+Independent review fixes cover inline fallback publication, startup-file symlinks,
+malformed instruction markers, and CODEOWNERS precedence. Claude and Codex deep skill
+loading pass using the current local skill verifier. Muse loads with an advisory-metadata warning.
+The full repository run recorded one unrelated runner-survey failure, 1388 passes and
+four skips; that unchanged test passed independently in both worktrees afterward.
+Final installer smoke passes: 16 planned/applied changes, then zero on repeat.
+Source landing, live pilot, and rollout acceptance remain pending.
