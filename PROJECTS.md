@@ -2595,7 +2595,7 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
 
-## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.1)
+## [x] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.1)
 **Goal/Requirement**: Move a running agent conversation from one Rex session to another on the same
 computer (owner request 2026-11-14). Rex cannot move a window between sessions, so the skill recreates
 it: same agent, same conversation ID, same working directory, same window name, then the old window closes.
@@ -2640,9 +2640,9 @@ it: same agent, same conversation ID, same working directory, same window name, 
       Rex app to the new tab after a self-move.
 - [x] [P73-T03] "Not for … (session-move)" clause in `session-spinoff` and `session-handoff`; docs page; README row
 - [x] [P73-T04] Bump session 0.17.1 → 0.18.0; `just gen`; `just all`
-- [ ] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper and the same shell guard: smorinlabs/lost-sessions PR #26 (`5cd47aa`, `8e31a91`), open
-- [ ] [P73-T06] Codex global instructions carry the same Rex rule as Claude Code's: smorin/smorin-bootstrap PR #80 (`bdd16b3`), open
-- [ ] [P73-T07] PR #113, merge with owner approval; then re-point the dev placements at the main checkout
+- [x] [P73-T05] `lost-sessions` Rex launcher uses the same wrapper and the same shell guard: smorinlabs/lost-sessions PR #26 (`5cd47aa`, `8e31a91`), merged as `be395e2`
+- [x] [P73-T06] Codex global instructions carry the same Rex rule as Claude Code's: smorin/smorin-bootstrap PR #80 (`bdd16b3`), merged as `e8da613`
+- [x] [P73-T07] PR #113, merge with owner approval; then re-point the dev placements at the main checkout (merged as `d5d9573`; both placements re-pointed)
 - [x] [P73-T08] `session-spinoff`'s `verify-launch --agent muse` accepts a real Muse launch. Found during P73-T02:
       Muse's launcher execs `muse-bin-<version>`, which `detect_agent` compared against the bare name `muse`,
       so a successful launch reported `agent_ok: false`.
@@ -2667,4 +2667,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       `CODEX_THREAD_ID`; any self-move whose Rex pane runs a different conversation than the caller's
       (`CODEX_THREAD_ID` or `CLAUDE_CODE_SESSION_ID`) is refused; the handoff and the busy check read each agent's
       turn-end record. Bump session 0.18.0 → 0.18.1.
-- [ ] [P73-T13] Rerun the Codex and Muse self-moves on the fixed helper after merge and relink
+- [x] [P73-T13] Rerun the Codex and Muse self-moves on the fixed helper after merge and relink (#116 merged as `bf11243`).
+      Both passed: each found its own tab, the old tab closed only after the turn-end record, the same
+      conversation resumed with its history and no interrupted turn, and quitting left a shell prompt.
+- [x] [P73-T14] Release per the repo's flow (`release/next` → PR → merge commit → tag the merge commit) (released in v0.34.0)
