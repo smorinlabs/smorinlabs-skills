@@ -59,6 +59,11 @@ Install and maintain organization-member Muse reviews through the official Claud
    Modified legacy files require reviewed reconciliation; do not force overwrite.
    Existing optional fix support and model choice are retained. Root
    `opencode.json`/`opencode.jsonc` and unrelated OpenCode content are preserved.
+   For an explicitly requested migration of an existing documentation audit
+   repair job, use `--audit-triage --migrate-opencode` and follow
+   [audit triage](references/audit-triage.md). This mode changes only that job;
+   it neither installs reviews nor grants them edits. Inventory CLI invocations
+   such as `opencode run` as well as direct OpenCode Action uses.
 
 5. **Review the rendered changes.** The managed paths are
    `.github/workflows/muse-pr-review.yml`, `muse-followup.yml`, optional
@@ -118,8 +123,11 @@ comment-update tool result and publication readback. If the upstream action fall
 back to top-level progress for an inline reply, the helper relocates its completed
 answer to the validated discussion root before declaring success.
 
-Do not enable issue triage, bot triggers, automatic fixes, approvals, merges,
-unrestricted tools, or unrelated automation. The direct action is SHA-pinned;
+Do not enable issue triage, bot triggers, new automatic repair jobs, approvals,
+merges, unrestricted tools, or unrelated automation. The explicitly requested
+audit-triage migration preserves an existing documentation repair job under its
+separate contract; it does not authorize expanding its write scope.
+The direct action is SHA-pinned;
 its installer and dependency resolution remain external trust dependencies.
 Read controls are runtime permissions, not an OS sandbox. Findings may publish
 before a final stale-head check; do not promise atomic current-head publication.
@@ -130,3 +138,4 @@ before a final stale-head check; do not promise atomic current-head publication.
 - [Acceptance](references/acceptance.md): installation, cutover, pilot evidence, rollback.
 - [Secrets](references/secrets.md): scoped credentials and secure provisioning.
 - [Provenance](references/provenance.md): exact inspected sources and runtime versions.
+- [Audit triage](references/audit-triage.md): existing CLI audit-job migration, permissions, and pilot gates.

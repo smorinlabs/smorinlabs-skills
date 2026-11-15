@@ -4,6 +4,11 @@ Validation snapshot: November 15, 2026. Muse GitHub **0.5.3** is delivered.
 Both identified Action consumers are migrated, activated, and live-verified.
 The first pilot passed before the second repository was migrated.
 
+Scope correction: that delivery covered direct OpenCode Action review workflows.
+Three existing audit-triage jobs invoking `opencode run` were initially excluded.
+They are now included in the authorized migration and remain pending until the
+separate audit-triage skill checks, live pilot, and incremental rollout pass.
+
 Source [PR #122](https://github.com/smorinlabs/smorinlabs-skills/pull/122) merged as
 [`28ec8c00a9581b1e7d7c813ebba13ba294a67930`](https://github.com/smorinlabs/smorinlabs-skills/commit/28ec8c00a9581b1e7d7c813ebba13ba294a67930).
 The delivered skill runs Meta Muse through the official Anthropic Claude Code
@@ -50,8 +55,8 @@ the three changed repositories were fetched again and their blob hashes verified
 Unchanged heads retained their previously verified workflow snapshots. No
 deprecated OpenCode Action references remained. The initial inventory identified
 **2 Action consumers** among 237 workflow files.
-Three CLI-wrapper integrations were excluded because they are outside this
-Action migration. This is accessible-repository coverage, not proof about
+Three CLI-wrapper integrations were excluded from that initial review-only
+delivery; the continuation now includes them. This is accessible-repository coverage, not proof about
 inaccessible repositories, historical workflows, or every use of OpenCode.
 
 ## Live pilot evidence
