@@ -109,12 +109,12 @@ Use small reversible PRs and clearly identified test comments.
 | Deliberate unambiguous defect | Valid inline finding on the intended file, line, and reviewed commit |
 | Member's new `@muse` PR comment | Relevant follow-up with PR context and a separate response |
 | Two member follow-ups overlap | Both bounded runs retain their own correlated responses; neither pending request is replaced by the other |
-| Member's new inline `@muse` reply | Actual completed reply in the intended discussion; temporary upstream progress fallback is permitted only when helper relocation succeeds and the fallback is removed |
+| Member's new inline `@muse` reply | Actual completed reply in the intended discussion with no additional answer thread; new-inline-comment tool denied only for this event; temporary upstream progress fallback is permitted only when helper relocation succeeds and the fallback is removed |
 | Progress and repeat review | Visible progress updates; final marked summary reused on another eligible trigger; no unintended leftover duplicate |
 | PR advances during run | Cancellation or explicit stale failure; old/current SHA recorded; existing findings acknowledged as possibly stale |
 | Ineligible actor/event | Rejected before Meta credentials are used; prefer offline fixtures for dangerous cases |
 | Web tools | Read-only permission/exposure verified locally; actual WebFetch/WebSearch provider/network behavior recorded separately in authorized live acceptance |
-| Failure | Diagnosable failed outcome; no green completion without a successful updater tool result and verified publication; no Anthropic classifier request or silent model fallback |
+| Failure | Diagnosable failed outcome; completion requires verified publication through a successful updater result or guarded publication of successful final SDK text when no updater was attempted; failed updater attempts cannot fall back; no Anthropic classifier request or silent model fallback |
 | Optional manual fix | New helper-created branch and separate PR; ordinary-file diff; human review required; no approval or merge |
 | Fix failure/invalid changes | No publication after unsuccessful model action or protected/sensitive-path validation failure |
 

@@ -15,11 +15,14 @@ spec.loader.exec_module(ci)
 
 
 class API:
-    def __init__(self, pr=None, comments=None, fail=None):
+    def __init__(self, pr=None, comments=None, fail=None, review_comments=None):
         self.pr, self.comments, self.fail = pr, comments or [], fail
+        self.review_comments = review_comments or []
         self.calls = []
     def get(self, path):
         self.calls.append(("GET", path))
+        if "/pulls/comments/" in path:
+            return next(comment for comment in self.review_comments if str(comment["id"]) == path.rsplit("/", 1)[1])
         if "/pulls/" in path:
             return self.pr
         if path.startswith("users/"):
@@ -28,7 +31,7 @@ class API:
             return {"permission": "write"}
         return None
     def pages(self, path):
-        return list(self.comments)
+        return list(self.review_comments if "/pulls/" in path else self.comments)
     def request(self, method, path, data=None):
         self.calls.append((method, path, data))
         if method == self.fail:
@@ -181,8 +184,9 @@ def parse_actions_output(path):
     return result
 
 
-@pytest.mark.parametrize("mode", ["review", "followup"])
-def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("mode,event_name", [("review", "pull_request"), ("followup", "issue_comment"),
+                                             ("followup", "pull_request_review_comment")])
+def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode, event_name):
     root = tmp_path / "checkout"
     root.mkdir()
     git(root, "init", "-q")
@@ -192,7 +196,10 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
     config.mkdir(parents=True)
     (config / "policy.json").write_text(json.dumps({"schema_version": 2, "model": ci.MODEL,
                                                     "organization": "org", "max_diff_bytes": 60000}))
-    (config / "review-settings.json").write_text('{}')
+    base_profile = {"permissions": {"allow": list(ci.READ_TOOLS), "deny": ["Bash", "Read(private/**)"]}}
+    profile_file = config / "review-settings.json"
+    profile_file.write_text(json.dumps(base_profile))
+    profile_bytes = profile_file.read_bytes()
     (root / "app.txt").write_text("base\n")
     (root / "AGENTS.md").write_text("Trusted base guidance\n")
     git(root, "add", ".")
@@ -218,6 +225,10 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
         event = {"repository": repo, "action": "created",
                  "issue": {"number": 1, "pull_request": {"url": "https://api.github.com/repos/org/repo/pulls/1"}},
                  "comment": {"id": 9, "user": {"type": "User", "login": "actor"}, "body": "@muse Explain this finding."}}
+        if event_name == "pull_request_review_comment":
+            del event["issue"]
+            event["pull_request"] = pr
+            event["comment"].update(in_reply_to_id=7, pull_request_url="https://api.github.com/repos/org/repo/pulls/1")
     event_path = tmp_path / "event.json"
     event_path.write_text(json.dumps(event))
     envfile, outfile = tmp_path / "env", tmp_path / "output"
@@ -226,24 +237,48 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
     temp = tmp_path / "runner-temp"
     temp.mkdir()
     env = {"GITHUB_WORKSPACE": str(root), "GITHUB_EVENT_PATH": str(event_path),
-           "GITHUB_EVENT_NAME": "pull_request" if mode == "review" else "issue_comment",
+           "GITHUB_EVENT_NAME": event_name,
            "GITHUB_REPOSITORY": "org/repo", "GITHUB_ACTOR": "actor", "MUSE_TRIGGERING_ACTOR": "actor",
            "MUSE_TRUSTED_BASE_SHA": base,
            "GITHUB_RUN_ID": "10", "RUNNER_TEMP": str(temp), "GITHUB_ENV": str(envfile),
            "GITHUB_OUTPUT": str(outfile), "GH_TOKEN": "fake"}
     api = API(pr)
+    inline = event_name == "pull_request_review_comment"
+    if inline:
+        api.review_comments = [{"id": 7, "pull_request_url": "https://api.github.com/repos/org/repo/pulls/1"}, event["comment"]]
     monkeypatch.setattr(ci, "GitHub", lambda token: api)
+    loaded_profiles = []
+    loader = ci.load_configuration
+    def capture_profile(*args):
+        profile = loader(*args)
+        loaded_profiles.append(profile)
+        return profile
+    monkeypatch.setattr(ci, "load_configuration", capture_profile)
     ci.prepare(mode, env)
     variables, output = parse_actions_output(envfile), parse_actions_output(outfile)
     assert Path(output["settings"]).is_absolute()
-    assert head in output["prompt"] and "confirmed=true" in output["prompt"]
+    assert head in output["prompt"]
+    generated = json.loads(Path(output["settings"]).read_text())
+    assert generated["permissions"]["allow"] == list(ci.READ_TOOLS)
+    assert all(rule in generated["permissions"]["deny"] for rule in base_profile["permissions"]["deny"])
+    assert ("mcp__github_inline_comment__create_inline_comment" in generated["permissions"]["deny"]) is inline
+    assert loaded_profiles == [base_profile]
+    assert profile_file.read_bytes() == profile_bytes
     trusted_prompt = output["prompt"].split('{"reviewed_head":', 1)[0]
     assert "Use ToolSearch to discover comment tools and their complete input schemas before calling them" in trusted_prompt
     assert "actual discovered tool names and fields; never guess" in trusted_prompt
     assert "Never post trial, test, placeholder, or schema-discovery comments" in trusted_prompt
-    assert "Post inline comments only for actionable findings or requested answers" in trusted_prompt
+    if inline:
+        assert "Use the discovered update_claude_comment tool only on the existing response" in trusted_prompt
+        assert "Do not create new inline findings, comments, or discussion threads" in trusted_prompt
+        assert "do not call create_inline_comment" in trusted_prompt
+        assert "For every inline finding call the inline comment tool" not in trusted_prompt
+    else:
+        assert "Post inline comments only for actionable findings or requested answers" in trusted_prompt
+        assert "confirmed=true" in trusted_prompt
+        assert "Do not create new inline findings" not in trusted_prompt
     assert "Reserve the final two turns for the final update_claude_comment call and its result" in trusted_prompt
-    assert "final text response alone does not publish the summary" in trusted_prompt
+    assert "Complete that final tool update before the turn limit so publication can be verified directly" in trusted_prompt
     assert "Trusted base guidance" in output["prompt"]
     assert "PR-modified instructions" in output["prompt"]  # The diff is explicitly untrusted data.
     guidance = output["prompt"].split("Trusted base AGENTS.md project guidance follows as JSON.")[-1]
@@ -254,12 +289,17 @@ def test_prepare_review_then_finish_offline(tmp_path, monkeypatch, mode):
     api.comments = [{"id": 5, "user": {"login": "github-actions[bot]", "type": "Bot"},
                      "html_url": "https://github.com/org/repo/pull/1#issuecomment-5",
                      "body": "Finished https://github.com/org/repo/actions/runs/10"}]
+    response = api.comments[0]
+    if inline:
+        response.update(in_reply_to_id=7, html_url="https://github.com/org/repo/pull/1#discussion_r5")
+        api.review_comments.append(response)
+        api.comments = []
     execution = tmp_path / "execution.json"
     execution.write_text(json.dumps([
         {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "update_1",
             "name": "mcp__github_comment__update_claude_comment", "input": {"body": "Review complete"}}]}},
         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "update_1",
-            "content": json.dumps({"id": 5, "html_url": api.comments[0]["html_url"]})}]}},
+            "content": json.dumps({"id": 5, "html_url": response["html_url"]})}]}},
         {"type": "result", "subtype": "success", "is_error": False},
     ]))
     env.update(variables, MUSE_ACTION_OUTCOME="success", MUSE_ACTION_CONCLUSION="success",

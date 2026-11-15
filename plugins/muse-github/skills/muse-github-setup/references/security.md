@@ -154,6 +154,14 @@ Meta endpoint or that a mock proves external web success. The main model and
 all model aliases remain routed to Muse. Record actual provider/tool failures
 rather than silently disabling the requested read-only capability.
 
+Live acceptance with CLI 2.1.325 confirmed successful WebFetch. Native WebSearch
+was permitted and attempted, but returned
+`API Error: 400 web_search field 'max_uses' is not supported`.
+The CLI includes this field in its server-search request. Meta explicitly rejects
+it in the [Messages API](https://dev.meta.ai/docs/protocols/messages), and no
+supported CLI override was identified. Keep the tool permitted and report this
+compatibility limitation; do not claim native WebSearch works with this runtime.
+
 The action fetches the current base branch when restoring sensitive startup
 files and saves PR variants under `.claude-pr/`. Those variants are untrusted
 review data. Final verification records the action-fetched restoration revision,
@@ -179,16 +187,32 @@ Set `use_sticky_comment: 'false'`. Its upstream matcher targets Claude bot
 identities, which do not reliably match `github-actions[bot]`. For automatic
 reviews, the helper locates the new run-linked bot comment, upserts the marked
 summary, and deletes the transient comment only after successful publication.
-Finalization requires action outcome and conclusion success, a successful
-`update_claude_comment` tool result in the SDK execution log, and new bot-comment
-readback matching its exact ID and URL. Normal responses must contain the exact
-run URL. The pinned action cannot append that link to an inline event's top-level
+Finalization requires action outcome and conclusion success and verified GitHub
+publication. A successful `update_claude_comment` result in the SDK execution log
+is matched to a new bot comment by exact ID and URL. If no updater invocation
+occurred, the helper can instead publish the successful SDK result's non-empty
+final text, bounded to 60,000 UTF-8 bytes. This fallback requires exactly one new
+bot comment linked to the exact run. It validates the comment's repository, PR,
+namespace, and inline discussion root before updating that comment, then reads
+back its identity and exact body. A failed or malformed updater attempt never
+uses this fallback. Empty text, ambiguous candidates, or failed readback fail
+finalization. Neither path promotes an untouched initial progress body.
+
+Normal responses must contain the exact run URL. The pinned action cannot append
+that link to an inline event's top-level
 fallback, so the helper appends the trusted run link when repairing that specific
-case and verifies the resulting thread reply. An untouched initial progress
-comment is not completion evidence. Ambiguous matching or wrong-thread
-publication fails.
+case after a verified updater result and verifies the resulting thread reply.
+The final-text fallback still requires a run-linked candidate in this case.
+Ambiguous matching or wrong-thread publication fails.
 Follow-ups retain their individual responses.
 There may briefly be two comments; consolidation is not atomic.
+
+An inline-discussion follow-up updates its existing response only. Its generated
+permission profile denies the new-inline-comment tool, preventing an answer from
+also creating a separate review thread. The denial does not remove read-only
+tools. Automatic reviews and top-level comment follow-ups can still publish new
+inline findings. Request a new review through a top-level `@muse` comment when
+separate findings are wanted.
 
 The helper records the reviewed SHA and checks the live head before finalization.
 Every inline finding must name that recorded SHA. The upstream inline tool can
