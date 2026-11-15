@@ -244,6 +244,8 @@ class TurnReader:
         found = turn_open(agent, complete.decode("utf-8", "replace").splitlines())
         if found is not None:
             self.state[path] = found
+        if len(complete) < len(data):
+            return True  # a record is being written: the agent is not between turns
         return self.state.get(path)
 
 
@@ -278,13 +280,25 @@ def locate_by_conversation(candidates: list[dict], conversation_id: str) -> dict
     return next(iter(hits.values()))
 
 
-def check_caller(pane_conversation: str | None, caller_conversation: str | None) -> None:
-    """Refuse a self-move whose Rex IDs name a pane running someone else's conversation."""
-    if caller_conversation and pane_conversation != caller_conversation:
+def check_caller(pane_agent: str | None, pane_conversation: str | None,
+                 caller_agent: str | None, caller_conversation: str | None) -> None:
+    """Refuse a self-move whose Rex IDs name a pane running another agent or conversation."""
+    if caller_conversation and (pane_agent != caller_agent
+                                or pane_conversation != caller_conversation):
         raise MoveRefusal(
             f"this terminal's Rex IDs (REX_BLOCK) point at another window, which runs "
-            f"conversation {pane_conversation}, not this agent's {caller_conversation}; "
-            "pass --session and --window")
+            f"{NAMES.get(pane_agent, pane_agent)} conversation {pane_conversation}, not this "
+            f"agent's {caller_conversation}; pass --session and --window")
+
+
+def is_own_pane(pane_block: str | None, own_block: str | None, agent: str | None,
+                conversation_id: str | None, caller_agent: str | None,
+                caller_conversation: str | None) -> bool:
+    """The pane is the caller's own: Rex IDs name it, or it runs the caller's conversation."""
+    if own_block and pane_block == own_block:
+        return True
+    return bool(caller_conversation) and agent == caller_agent \
+        and conversation_id == caller_conversation
 
 
 def build_launch(plan: dict, python: str, script: str, release_file: str) -> list[str]:
@@ -558,12 +572,14 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
     sessions = (_run_json(["rex", "session", "list", "--json"]) or {}).get("sessions", [])
     own_session, own_block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
     caller_agent, caller_conversation = caller_identity(os.environ)
-    if caller_agent == "codex" and not (session_arg or window_arg):
+    if caller_agent == "codex":
         # Codex's REX_* variables come from its shared app-server, not from this tab.
-        hit = locate_by_conversation(
-            codex_candidates(sessions, whoami.get("host_id")), caller_conversation)
-        own_session, own_block = hit["session_id"], hit["block_id"]
-        conversation_arg = conversation_arg or caller_conversation
+        own_session = own_block = None
+        if not (session_arg or window_arg):
+            hit = locate_by_conversation(
+                codex_candidates(sessions, whoami.get("host_id")), caller_conversation)
+            own_session, own_block = hit["session_id"], hit["block_id"]
+            conversation_arg = conversation_arg or caller_conversation
 
     session_id = own_session
     if session_arg:
@@ -607,9 +623,10 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
             quiet = Ports().mtime_age(transcript) if transcript else None
             open_turn = TurnReader().open(agent, transcript) if transcript else None
 
-    is_self = bool(own_block) and block.get("block_id") == own_block
-    if is_self and agent and agent == caller_agent:
-        check_caller(conversation_id, caller_conversation)
+    if own_block and block.get("block_id") == own_block:
+        check_caller(agent, conversation_id, caller_agent, caller_conversation)
+    is_self = is_own_pane(block.get("block_id"), own_block, agent, conversation_id,
+                          caller_agent, caller_conversation)
     reasons = refusals({
         "self": is_self, "panes": len(panes), "source_host": block.get("host_id"),
         "server_host": whoami.get("host_id"), "agent": agent, "foreground": fg.get("argv0"),

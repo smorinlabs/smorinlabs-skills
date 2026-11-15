@@ -374,6 +374,16 @@ def test_a_partial_last_line_is_left_for_the_next_read(tmp_path):
     assert reader.open("muse", str(t)) is False
 
 
+def test_a_partial_record_after_a_finished_turn_is_not_the_end_of_the_turn(tmp_path):
+    # Review of PR #116: a new turn being written must not read as the old one's end.
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
+    reader = sm.TurnReader()
+    assert reader.open("codex", str(t)) is False
+    t.write_text(t.read_text() + codex_line("task_started")[:15])
+    assert reader.open("codex", str(t)) is True
+
+
 def test_a_quiet_transcript_with_an_open_turn_is_not_the_end_of_the_turn():
     ports = FakePorts(quiet_at=0.0, turn_open_until=30.0)
     assert sm.run_handoff(cfg(agent="muse", transcript="/t/session.jsonl",
@@ -431,9 +441,28 @@ def test_a_conversation_without_exactly_one_window_is_refused(cands, needle):
 def test_rex_ids_that_point_at_another_conversation_are_refused():
     # The stale pane runs an agent too; without this check its window would move, unchecked.
     with pytest.raises(sm.MoveRefusal, match="another window"):
-        sm.check_caller("conv-other", "conv-mine")
-    sm.check_caller("conv-mine", "conv-mine")
-    sm.check_caller("conv-mine", None)  # the agent names no caller: nothing to compare
+        sm.check_caller("claude", "conv-other", "claude", "conv-mine")
+    sm.check_caller("claude", "conv-mine", "claude", "conv-mine")
+    sm.check_caller("claude", "conv-mine", None, None)  # no caller named: nothing to compare
+
+
+def test_rex_ids_that_point_at_another_agent_are_refused():
+    # Review of PR #116: a Claude caller whose IDs name a Codex pane must not move it.
+    with pytest.raises(sm.MoveRefusal, match="another window"):
+        sm.check_caller("codex", "conv-mine", "claude", "conv-mine")
+
+
+@pytest.mark.parametrize(
+    "pane_block, own_block, agent, conv, expected",
+    [("block:b1", "block:b1", "claude", "c1", True),    # Rex IDs name this pane
+     ("block:b2", None, "codex", "c1", True),           # Codex named its own tab explicitly
+     ("block:b2", None, "codex", "c2", False),          # Codex moves another Codex tab
+     ("block:b2", None, "claude", "c1", False)],        # same ID, different agent
+)
+def test_self_is_this_pane_or_the_callers_own_conversation(pane_block, own_block, agent, conv,
+                                                           expected):
+    # Review of PR #116: under Codex, --session/--window naming its own tab is still a self-move.
+    assert sm.is_own_pane(pane_block, own_block, agent, conv, "codex", "c1") is expected
 
 
 @pytest.mark.parametrize(
