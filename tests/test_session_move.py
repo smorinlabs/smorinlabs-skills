@@ -496,7 +496,10 @@ def test_the_nearest_agent_ancestor_is_the_caller(ancestors, expected):
 @pytest.mark.parametrize(
     "argv, found",
     [("codex resume 01a1", True), ("codex resume --sandbox workspace-write 01a1", True),
-     ("codex Review conversation 01a1", False), ("codex exec 01a1", False)],  # ps drops quotes
+     ("codex -a on-request resume 01a1", True), ("codex resume -s=read-only 01a1", True),
+     ("codex Review conversation 01a1", False), ("codex exec 01a1", False),  # ps drops quotes
+     ("codex Please resume conversation 01a1", False),  # review of PR #118: a prompt word
+     ("codex resume 01a2 01a1", False)],  # 01a1 is the prompt; 01a2 is resumed
 )
 def test_only_a_resume_argument_names_the_conversation(argv, found):
     cands = [cand(None, window="window:w1", argv="codex"), cand(None, window="window:w2", argv=argv)]
@@ -507,6 +510,12 @@ def test_only_a_resume_argument_names_the_conversation(argv, found):
             sm.locate_by_conversation(cands, "01a1")
 
 
+def test_an_unknown_conversation_matches_no_pane():
+    # Review of PR #118: Codex ancestry without CODEX_THREAD_ID must not pick an unresolved pane.
+    with pytest.raises(sm.MoveRefusal, match="cannot tell which Codex conversation"):
+        sm.locate_by_conversation([cand(None, window="window:w1")], None)
+
+
 def test_a_transcript_that_cannot_be_read_is_not_a_finished_turn(tmp_path):
     t = tmp_path / "rollout.jsonl"
     t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
@@ -515,7 +524,37 @@ def test_a_transcript_that_cannot_be_read_is_not_a_finished_turn(tmp_path):
     t.write_text(t.read_text() + codex_line("task_started")[:15])
     assert reader.open("codex", str(t)) is True
     t.unlink()
-    assert reader.open("codex", str(t)) is None  # unknown blocks the close; never the cached False
+    assert reader.open("codex", str(t)) is True  # unreadable counts as busy: never the cached False
+
+
+def test_an_unreadable_transcript_never_falls_back_to_the_quiet_rule():
+    # Review of PR #118: an old unreadable file must not pass the six-second rule.
+    ports = FakePorts(quiet_at=0.0, turn_open_until=float("inf"))
+    assert sm.run_handoff(cfg(agent="codex", transcript="/t/rollout.jsonl",
+                              resume_argv=["codex", "resume", "conv-1"]), ports) == 1
+    assert ports.closed == []
+
+
+def test_a_failed_read_after_a_replacement_rereads_the_new_file(tmp_path, monkeypatch):
+    # Review of PR #118: the new file's identity is saved only with a successful read.
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
+    reader = sm.TurnReader()
+    assert reader.open("codex", str(t)) is False
+    new = tmp_path / "new.jsonl"
+    new.write_text(codex_line("task_started") + "\n" + OTHER + "\n" + OTHER + "\n")
+    new.replace(t)
+    real_open = open
+
+    def failing_read(path, mode="r", *a, **k):
+        fh = real_open(path, mode, *a, **k)
+        fh.read = lambda *x: (_ for _ in ()).throw(OSError("read failed"))
+        return fh
+
+    monkeypatch.setattr("builtins.open", failing_read)
+    assert reader.open("codex", str(t)) is True
+    monkeypatch.setattr("builtins.open", real_open)
+    assert reader.open("codex", str(t)) is True  # task_started of the new file was not skipped
 
 
 def test_a_replaced_transcript_is_read_from_its_start(tmp_path):
