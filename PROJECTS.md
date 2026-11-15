@@ -2595,7 +2595,7 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
 
-## [x] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.1)
+## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.2)
 **Goal/Requirement**: Move a running agent conversation from one Rex session to another on the same
 computer (owner request 2026-11-14). Rex cannot move a window between sessions, so the skill recreates
 it: same agent, same conversation ID, same working directory, same window name, then the old window closes.
@@ -2671,3 +2671,12 @@ it: same agent, same conversation ID, same working directory, same window name, 
       Both passed: each found its own tab, the old tab closed only after the turn-end record, the same
       conversation resumed with its history and no interrupted turn, and quitting left a shell prompt.
 - [x] [P73-T14] Release per the repo's flow (`release/next` → PR → merge commit → tag the merge commit) (released in v0.34.0)
+- [x] [P73-TS13] Test: the nearest agent ancestor names the caller (not an inherited variable); only a `resume <id>`
+      argument breaks a directory tie; a transcript that cannot be read, or was replaced, never reads as a finished turn
+- [x] [P73-T15] Three findings from an independent Codex review of #116 (owner request 2026-11-14, O5), all
+      reproduced and fixed: (1) `caller_identity` preferred an inherited `CODEX_THREAD_ID`, so a Claude Code agent
+      started under Codex would pick its parent's tab; (2) any command-line word matching the conversation ID broke a
+      directory tie; (3) `TurnReader` returned a cached "ended" after a failed read and kept its offset across a
+      replaced file. Known limit: inside Codex's sandbox `ps` reports no ancestry, so the variables decide. Bump session
+      0.18.1 → 0.18.2.
+- [ ] [P73-T16] Release session 0.18.2

@@ -227,18 +227,22 @@ class TurnReader:
     def __init__(self) -> None:
         self.offset: dict[str, int] = {}
         self.state: dict[str, bool | None] = {}
+        self.file_id: dict[str, tuple[int, int]] = {}
 
     def open(self, agent: str, path: str) -> bool | None:
         try:
             with open(path, "rb") as fh:
+                st = os.fstat(fh.fileno())
                 size = fh.seek(0, os.SEEK_END)
                 start = self.offset.get(path, 0)
-                if size < start:  # replaced or truncated: read it again from the start
-                    start, self.state[path] = 0, None
+                if size < start or self.file_id.get(path, (st.st_dev, st.st_ino)) \
+                        != (st.st_dev, st.st_ino):
+                    start, self.state[path] = 0, None  # replaced or truncated: reread it all
+                self.file_id[path] = (st.st_dev, st.st_ino)
                 fh.seek(start)
                 data = fh.read()
         except OSError:
-            return self.state.get(path)
+            return None  # unknown, never a cached "ended": a failed read must not close a tab
         complete = data[:data.rfind(b"\n") + 1]
         self.offset[path] = start + len(complete)
         found = turn_open(agent, complete.decode("utf-8", "replace").splitlines())
@@ -249,12 +253,32 @@ class TurnReader:
         return self.state.get(path)
 
 
-def caller_identity(env) -> tuple[str | None, str | None]:
-    """The agent and conversation that ran this helper, as the agent itself names them.
+CALLER_VARS = {"claude": "CLAUDE_CODE_SESSION_ID", "codex": "CODEX_THREAD_ID", "muse": None}
 
-    Codex is checked first: its shared app-server can carry another agent's variables
-    (and stale REX_SESSION/REX_BLOCK) from the terminal it was started in.
+
+def ancestor_agent(name: str) -> str | None:
+    """claude, codex, or muse for an ancestor's argv0; Codex runs commands from its
+    app-server or codex-code-mode-host, Muse as muse-bin-<version>."""
+    base = os.path.basename(name.lstrip("-")).split("-bin-")[0]
+    if base.startswith("codex"):
+        return "codex"
+    return base if base in CALLER_VARS else None
+
+
+def caller_identity(env, ancestors: list[str]) -> tuple[str | None, str | None]:
+    """The agent and conversation that ran this helper.
+
+    The nearest agent among the helper's process ancestors is the caller; its own
+    variable names the conversation. A variable set by a parent agent is inherited by
+    every agent below it, so the variables alone cannot say which agent is asking.
+    With no ancestry, Codex is checked first: its shared app-server can carry another
+    agent's variables (and stale REX_SESSION/REX_BLOCK) from the terminal it started in.
     """
+    for name in ancestors:
+        agent = ancestor_agent(name)
+        if agent:
+            var = CALLER_VARS[agent]
+            return agent, (env.get(var) or None) if var else None
     if env.get("CODEX_THREAD_ID"):
         return "codex", env["CODEX_THREAD_ID"]
     if env.get("CLAUDE_CODE_SESSION_ID"):
@@ -268,9 +292,12 @@ def locate_by_conversation(candidates: list[dict], conversation_id: str) -> dict
     A candidate matches by the conversation the helper attributed to it, or by a
     `resume <id>` argument in its command line, which settles a directory tie.
     """
+    def resumes(argv: str) -> bool:
+        words = argv.split()
+        return "resume" in words and conversation_id in words[words.index("resume") + 1:]
+
     hits = {c["window_id"]: c for c in candidates
-            if c.get("conversation_id") == conversation_id
-            or conversation_id in (c.get("argv") or "").split()}
+            if c.get("conversation_id") == conversation_id or resumes(c.get("argv") or "")}
     if not hits:
         raise MoveRefusal(f"no Rex window runs conversation {conversation_id} on this computer; "
                           "pass --session and --window")
@@ -528,6 +555,25 @@ def inventory_rows(agent: str) -> tuple[list[dict], str]:
     return (data if isinstance(data, list) else data.get("sessions", [])), ""
 
 
+def process_ancestors(limit: int = 20) -> list[str]:
+    """argv0 of each ancestor process, nearest first; empty when ps cannot say."""
+    out, pid = [], os.getppid()
+    for _ in range(limit):
+        if pid <= 1:
+            break
+        try:
+            line = subprocess.run(["ps", "-o", "ppid=,command=", "-p", str(pid)],
+                                  capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        parts = line.split(None, 2)
+        if len(parts) < 2:
+            break
+        out.append(parts[1])
+        pid = int(parts[0])
+    return out
+
+
 def codex_candidates(sessions: list[dict], host_id: str | None) -> list[dict]:
     """Every pane on this computer running Codex, with the conversation it runs."""
     rows, _ = inventory_rows("codex")
@@ -571,7 +617,7 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
         raise MoveRefusal("cannot reach the Rex server (`rex whoami --json` failed)")
     sessions = (_run_json(["rex", "session", "list", "--json"]) or {}).get("sessions", [])
     own_session, own_block = os.environ.get("REX_SESSION"), os.environ.get("REX_BLOCK")
-    caller_agent, caller_conversation = caller_identity(os.environ)
+    caller_agent, caller_conversation = caller_identity(os.environ, process_ancestors())
     if caller_agent == "codex":
         # Codex's REX_* variables come from its shared app-server, not from this tab.
         own_session = own_block = None

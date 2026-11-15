@@ -472,7 +472,61 @@ def test_self_is_this_pane_or_the_callers_own_conversation(pane_block, own_block
      ({}, (None, None))],
 )
 def test_the_caller_is_named_by_its_agent(env, expected):
-    assert sm.caller_identity(env) == expected
+    assert sm.caller_identity(env, []) == expected  # no ancestry: the variables decide
+
+
+# ── P73-TS13: independent review of PR #116 (Codex, 2026-11-14) ──────────
+
+
+BOTH = {"CODEX_THREAD_ID": "parent", "CLAUDE_CODE_SESSION_ID": "child"}
+
+
+@pytest.mark.parametrize(
+    "ancestors, expected",
+    [(["zsh", "claude", "zsh", "codex"], ("claude", "child")),  # Claude started under Codex
+     (["zsh", "codex", "node", "claude"], ("codex", "parent")),  # Codex started under Claude
+     (["zsh", "muse-bin-1.4.20-R8619.1"], ("muse", None)),
+     (["zsh", "codex-code-mode-host"], ("codex", "parent"))],
+)
+def test_the_nearest_agent_ancestor_is_the_caller(ancestors, expected):
+    # An inherited variable names the parent agent, not the one that ran the helper.
+    assert sm.caller_identity(BOTH, ancestors) == expected
+
+
+@pytest.mark.parametrize(
+    "argv, found",
+    [("codex resume 01a1", True), ("codex resume --sandbox workspace-write 01a1", True),
+     ("codex Review conversation 01a1", False), ("codex exec 01a1", False)],  # ps drops quotes
+)
+def test_only_a_resume_argument_names_the_conversation(argv, found):
+    cands = [cand(None, window="window:w1", argv="codex"), cand(None, window="window:w2", argv=argv)]
+    if found:
+        assert sm.locate_by_conversation(cands, "01a1")["window_id"] == "window:w2"
+    else:
+        with pytest.raises(sm.MoveRefusal, match="no Rex window runs"):
+            sm.locate_by_conversation(cands, "01a1")
+
+
+def test_a_transcript_that_cannot_be_read_is_not_a_finished_turn(tmp_path):
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
+    reader = sm.TurnReader()
+    assert reader.open("codex", str(t)) is False
+    t.write_text(t.read_text() + codex_line("task_started")[:15])
+    assert reader.open("codex", str(t)) is True
+    t.unlink()
+    assert reader.open("codex", str(t)) is None  # unknown blocks the close; never the cached False
+
+
+def test_a_replaced_transcript_is_read_from_its_start(tmp_path):
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(codex_line("task_started") + "\n" + codex_line("task_complete") + "\n")
+    reader = sm.TurnReader()
+    assert reader.open("codex", str(t)) is False
+    new = tmp_path / "new.jsonl"  # a different file, at least as long, swapped into place
+    new.write_text(codex_line("task_started") + "\n" + OTHER + "\n" + OTHER + "\n")
+    new.replace(t)
+    assert reader.open("codex", str(t)) is True
 
 
 # ── P73-TS09: one resume per source, release and abort exclude each other ──
