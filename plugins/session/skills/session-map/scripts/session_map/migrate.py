@@ -65,6 +65,12 @@ def import_prototype(raw, config):
             "native_id": item.get("native_id"), "cwd": item.get("cwd"),
             "transcript": item.get("transcript"), "evidence": item.get("evidence", ""),
             "live": "unknown", "project_ids": [projects[item["project"]]] if item.get("project") in projects else []}
+        previous = data[kind].get(key, {})
+        row = {**previous, **{field: value for field, value in row.items() if value is not None}}
+        if not item.get("project") and previous.get("project_ids"):
+            row["project_ids"] = previous["project_ids"]
+        if not item.get("evidence") and previous.get("evidence"):
+            row["evidence"] = previous["evidence"]
         row["assessment"] = {"status": item.get("status", "Unknown"), "summary": item.get("summary", ""),
             "next_action": item.get("next", ""), "rationale": "Imported assessment; revalidate its evidence",
             "closure": "candidate" if item.get("status") == "Close candidate" else "unknown",

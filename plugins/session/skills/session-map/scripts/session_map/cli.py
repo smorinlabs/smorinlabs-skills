@@ -75,7 +75,7 @@ def main(argv=None):
                 fresh, sources, metrics = collect(data, directory, full=mode == "full", scope=scope)
                 data = reconcile(data, fresh, sources, metrics, full=mode == "full", scope=scope)
                 save(directory, data)
-                exit_code = int(any(s["status"] not in ("ok", "absent") for s in sources.values()))
+                exit_code = int(any(s["status"] not in ("ok", "absent", "disabled") for s in sources.values()))
             elif mode in ("assess", "annotate", "import"):
                 payload = json.loads(args.file.read_text())
                 if mode == "assess":
@@ -93,7 +93,7 @@ def main(argv=None):
                 "conversations": len(data["conversations"]), "projects": len(data["projects"]),
                 "pending_assessments": len(assessment_queue(data)["items"]), "metrics": data["metrics"],
                 "changes": {k: len(v) for k, v in data["changes"].items()},
-                "source_errors": {k: v for k, v in data["sources"].items() if v["status"] not in ("ok", "absent")}}
+                "source_errors": {k: v for k, v in data["sources"].items() if v["status"] not in ("ok", "absent", "disabled")}}
         if not args.no_open:
             summary["browser_open_requested"] = webbrowser.open(output.as_uri())
         print(json.dumps(summary, ensure_ascii=False))

@@ -254,7 +254,7 @@ def apply_assessments(data, payload):
                         for phase in result["plans"][plan_id].get("phases", [])}
         if not isinstance(phases, list) or any(phase not in known_phases for phase in phases):
             raise ValueError("Unknown phase in owning project plans")
-        deps = set(deps) | {key} | plan_ids
+        deps = set(deps) | {key} | project_ids | plan_ids
         if key in result["projects"]:
             deps.update(row.get("session_ids", []))
         deps.intersection_update(all_rows)

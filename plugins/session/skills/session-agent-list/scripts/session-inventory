@@ -97,7 +97,13 @@ class MetadataCache:
         value = loader(previous, entry)
         if self.stats["parsed_records"] > parsed_before:
             self.stats["parsed_files"] += 1
-        if file_signature(path) == before:
+        try:
+            after = file_signature(path)
+        except OSError:
+            # The observation was read successfully even if its source vanished
+            # or became inaccessible before the final fingerprint check.
+            after = None
+        if after == before:
             entry["value"] = copy.deepcopy(value)
             entry["checksum"] = cache_checksum(entry)
             self.entries[key] = entry

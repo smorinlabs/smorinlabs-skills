@@ -105,6 +105,7 @@ def collect_projects(config, records, old, full, scope, metrics):
     projects, plans, sources = {}, {}, {}
     cwds = [r.get("cwd") for r in records]
     roots = discover_roots(config.get("roots", []), cwds)
+    roots = {git(directory, "rev-parse", "--show-toplevel") or directory for directory in roots}
     roots.update(location["path"] for p in old["projects"].values()
                  for location in p.get("locations", []))
     # Worktrees can hold a newer plan than the main checkout.
@@ -179,6 +180,8 @@ def collect_projects(config, records, old, full, scope, metrics):
                         paths.append(target)
             except (OSError, ValueError) as exc:
                 sources[sid].update(status="partial", complete=False, error=str(exc))
+                if plan_id in old["projects"].get(pid, {}).get("plan_ids", []):
+                    project["plan_ids"].append(plan_id)
         project["plan_ids"] = sorted(set(project["plan_ids"]))
     for row in records:
         cwd = row.get("cwd")

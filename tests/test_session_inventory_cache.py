@@ -269,3 +269,22 @@ def test_source_write_during_collection_is_not_saved_under_later_fingerprint(roo
     second = inventory.MetadataCache(cache_dir)
     assert second.read(path, "test", lambda *_: second.parse(path.read_bytes())) == {"value": "after"}
     assert second.stats["hits"] == 0
+
+
+def test_deleted_source_after_read_preserves_metadata_and_evicts_cache(roots):
+    home, cache_dir = roots
+    path = home / "deleted-after-read.jsonl"
+    path.write_text('{"value":"old"}\n')
+    cache = inventory.MetadataCache(cache_dir)
+    cache.read(path, "test", lambda *_: cache.parse(path.read_bytes()))
+    assert cache.entries
+    path.write_text('{"value":"new observation"}\n')
+
+    def deleting_loader(previous, entry):
+        value = cache.parse(path.read_bytes())
+        path.unlink()
+        return value
+
+    assert cache.read(path, "test", deleting_loader) == {"value": "new observation"}
+    assert cache.stats["raced_files"] == 1
+    assert cache.entries == {}

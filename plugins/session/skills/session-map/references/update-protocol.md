@@ -28,6 +28,9 @@ record and decisions that depend on it, including project ownership and
 another session's closure recommendation. Use the helper's queue rather than
 reconstructing that dependency set manually.
 
+Session assessments also depend on their linked projects, so discovering an
+additional plan invalidates decisions based on the previous set of plans.
+
 An explicitly scoped update limits deep reads to the selected project or
 session and affected dependencies. Other records retain their original detail
 and assessment timestamps. Explain those limits in the result.
@@ -52,6 +55,12 @@ Distinguish an empty successful source from one that failed or was unavailable.
 After successful enumeration, a previously present record may become
 `not_observed`; that is not a claim that its work is done. Failed collection
 keeps previous records with stale coverage.
+
+Removing a configured adapter marks its previous observations stale and clears
+current liveness and navigation. Its source status becomes `disabled`; this is
+an intentional configuration change, not a failed collection. Failed transcript
+reads retain the last successful excerpt, and failed plan reads retain existing
+project associations until a later successful refresh establishes new evidence.
 
 The helper serializes writers and validates snapshot generations. If another
 update changed the generation while you were preparing assessments, reread

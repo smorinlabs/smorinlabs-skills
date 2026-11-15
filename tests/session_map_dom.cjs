@@ -10,6 +10,21 @@ const {parseHTML} = require('linkedom');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const {window, document} = parseHTML(html);
 const data = JSON.parse(document.getElementById('inventory').textContent);
+let clearedPlanProject;
+if (process.argv.includes('--null-plan')) {
+  clearedPlanProject = Object.values(data.projects).find(p => p.plan_ids?.length);
+  assert(clearedPlanProject, 'null-plan fixture needs a project plan');
+  clearedPlanProject.assessment = {...clearedPlanProject.assessment,
+    selected_plan: clearedPlanProject.plan_ids[0]};
+  clearedPlanProject.overrides = {...clearedPlanProject.overrides, selected_plan: null};
+}
+if (process.argv.includes('--container')) {
+  const child = Object.values(data.locations).find(r => r.navigation);
+  assert(child, 'container fixture needs a navigable location');
+  data.locations['location:container-fixture'] = {id: 'location:container-fixture',
+    presence: 'observed', title: 'Container fixture', navigation: {command: 'fixture focus container'}};
+  child.overrides = {...child.overrides, container_id: 'location:container-fixture'};
+}
 if (process.argv.includes('--adversarial')) {
   const plan = Object.values(data.plans).find(p => p.phases?.length);
   assert(plan, 'adversarial fixture needs a project plan');
@@ -18,8 +33,8 @@ if (process.argv.includes('--adversarial')) {
     complete: '<img id="session-map-injected-count">'};
   phase.tasks = [{id: 'P01-T01', state: 'open', title: 'Synthetic task',
     line: '<img id="session-map-injected-line">'}];
-  document.getElementById('inventory').textContent = JSON.stringify(data);
 }
+document.getElementById('inventory').textContent = JSON.stringify(data);
 const source = [...document.querySelectorAll('script')].find(s => !s.id).textContent;
 let copied = null, exported = false;
 for (const id of ['search', 'manager', 'agent']) {
@@ -41,6 +56,11 @@ function visit(hash) {
 function click(id) { document.getElementById(id).dispatchEvent(new window.Event('click', {bubbles: true})); }
 for (const route of ['overview','projects','sessions','closure','history','changes','sources']) visit('#'+route);
 for (const id of Object.keys(data.projects)) visit('#project/'+encodeURIComponent(id));
+if (clearedPlanProject) {
+  visit('#project/'+encodeURIComponent(clearedPlanProject.id));
+  assert(document.getElementById('view').textContent.includes('No authoritative plan pinned.'),
+    'explicit null correction did not clear the selected plan');
+}
 for (const id of Object.keys(data.locations)) visit('#session/'+encodeURIComponent(id));
 for (const id of Object.keys(data.plans).slice(0, 10)) visit('#plan/'+encodeURIComponent(id));
 visit('#sessions');
@@ -53,10 +73,13 @@ const target = Object.values(data.locations).find(r => r.navigation);
 if (target) {
   visit('#session/'+encodeURIComponent(target.id));
   const buttons = [...document.querySelectorAll('#view button[data-copy]')];
-  const button = buttons.find(b => b.getAttribute('data-copy') === target.navigation.command);
+  const container = data.locations[target.overrides?.container_id];
+  const expected = target.navigation.command + (container?.navigation && container.presence === 'observed'
+    ? ' &&\n' + container.navigation.command : '');
+  const button = buttons.find(b => b.getAttribute('data-copy') === expected);
   assert(button, 'exact terminal command missing');
   button.dispatchEvent(new window.Event('click', {bubbles: true}));
-  assert.equal(copied, target.navigation.command);
+  assert.equal(copied, expected);
 }
 click('update'); assert.equal(copied, data.render.update_prompt);
 click('render'); assert.equal(copied, data.render.render_command);

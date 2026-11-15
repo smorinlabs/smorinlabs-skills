@@ -342,7 +342,7 @@ def collect(data, directory, full=False, scope=None):
             row["identity_conflict"] = True
     cache_path = directory / "cache/excerpts.json"
     try:
-        cache = json.loads(cache_path.read_text()) if not full else {}
+        cache = json.loads(cache_path.read_text())
     except (OSError, ValueError):
         cache = {}
     for key, row in conversations.items():
@@ -355,10 +355,11 @@ def collect(data, directory, full=False, scope=None):
             (row["live"] in ("yes", "unknown") or bool(prior.get("assessment"))))
         if should_read:
             result = text_excerpt(row.get("transcript"), cache.get(key), full, metrics)
-            cache[key] = result
-            row["evidence"] = result["text"] or result["basis"]
             if result.get("error"):
-                row["evidence_error"] = result["error"]
+                row["error"] = result["error"]
+            else:
+                cache[key] = result
+                row["evidence"] = result["text"] or result["basis"]
         else:
             row["evidence"] = prior.get("evidence", row["evidence"])
         row["review_requested"] = scoped
@@ -367,6 +368,18 @@ def collect(data, directory, full=False, scope=None):
     project_scope = {"project": next(iter(selected_projects))} if scope and len(selected_projects) == 1 else None
     projects, plans, src = collect_projects(config, records, data, full, project_scope, metrics)
     sources.update(src)
+    # Configuration removal is not an unprobed scope: old observations must
+    # stop claiming current liveness even when their adapter no longer runs.
+    known_sources = set(data["sources"]) | {r.get("source_id", "")
+        for kind in ("locations", "conversations") for r in data[kind].values()}
+    for sid in known_sources:
+        adapter = sid.split(":", 1)[0]
+        disabled = adapter in ("native", "rex", "herdr", "agent-deck") and adapter not in config["sources"]
+        if sid.startswith("herdr:") and sid[6:] not in config.get("herdr_sessions", []):
+            disabled = True
+        if disabled:
+            sources[sid] = {"status": "disabled", "complete": False,
+                            "error": "Source is not enabled in the current map configuration"}
     for row in records:
         for pid in row.get("project_ids", []):
             if pid in projects:

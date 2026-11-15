@@ -278,3 +278,128 @@ def test_cli_full_update_render_with_fake_collect(tmp_path, monkeypatch, capsys)
         assert json.loads(capsys.readouterr().out)["mode"] == mode
     assert len(state.load(tmp_path)["locations"]) == 1
     assert len(list((tmp_path/'snapshots').glob('*.json'))) == 1
+
+
+def test_removed_source_clears_liveness_and_navigation(tmp_path, monkeypatch):
+    row = {"id": "conversation:a", "source_id": "native:codex", "native_id": "a",
+           "agent": "codex", "live": "yes", "evidence": "Working", "transcript": None,
+           "navigation": {"command": "verified old command"}}
+    monkeypatch.setattr(collectors, "native", lambda *a: ({row["id"]: dict(row)}, {"native:codex": {"status": "ok"}}))
+    monkeypatch.setattr(collectors, "rex", lambda *a: ({}, {"rex": {"status": "ok"}}))
+    monkeypatch.setattr(collectors, "collect_projects", lambda *a: ({}, {}, {}))
+    assert main(["full", "--map-dir", str(tmp_path), "--source", "native", "--no-open"]) == 0
+    for _ in range(2):
+        assert main(["update", "--map-dir", str(tmp_path), "--source", "rex", "--no-open"]) == 0
+        saved = state.load(tmp_path)["conversations"][row["id"]]
+        assert saved["presence"] == "stale"
+        assert saved["live"] == "unknown"
+        assert saved["last_known_live"] == "yes"
+        assert saved["navigation"] is None
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_failed_transcript_read_preserves_excerpt_and_recovers(tmp_path, monkeypatch, full):
+    transcript = tmp_path / "conversation.jsonl"
+    transcript.write_text(json.dumps({"type": "user", "message": {"content": "Keep this evidence"}})+'\n')
+    row = {"id": "conversation:a", "source_id": "native:codex", "native_id": "a",
+           "agent": "codex", "live": "yes", "evidence": "Metadata", "transcript": str(transcript)}
+    data = state.new_map({"roots": [], "sources": ["native"]})
+    monkeypatch.setattr(collectors, "native", lambda *a: ({row["id"]: dict(row)}, {"native:codex": {"status": "ok"}}))
+    monkeypatch.setattr(collectors, "collect_projects", lambda *a: ({}, {}, {}))
+    fresh, sources, metrics = collectors.collect(data, tmp_path)
+    data = state.reconcile(data, fresh, sources, metrics)
+    previous = data["conversations"][row["id"]]["evidence"]
+    cache = (tmp_path / "cache/excerpts.json").read_bytes()
+    transcript.unlink()
+    fresh, sources, metrics = collectors.collect(data, tmp_path, full=full)
+    data = state.reconcile(data, fresh, sources, metrics)
+    assert data["conversations"][row["id"]]["evidence"] == previous
+    assert data["conversations"][row["id"]]["presence"] == "stale"
+    assert (tmp_path / "cache/excerpts.json").read_bytes() == cache
+    transcript.write_text(json.dumps({"type": "user", "message": {"content": "Recovered evidence"}})+'\n')
+    fresh, sources, metrics = collectors.collect(data, tmp_path)
+    data = state.reconcile(data, fresh, sources, metrics)
+    saved = data["conversations"][row["id"]]
+    assert saved["presence"] == "observed" and "error" not in saved
+    assert "Recovered evidence" in saved["evidence"]
+
+
+def test_import_merges_matching_history_and_session():
+    raw = {"projects": [{"id": "demo"}], "history": [{"id": "native-full", "tool": "codex",
+           "spawn_dir": "/work/demo", "transcript": "/history.jsonl", "lineage": "parent", "project": "demo"}],
+           "sessions": [{"id": "C1", "agent": "Codex", "native_id": "native-full", "title": "Current work"}]}
+    data = import_prototype(raw, {"roots": [], "sources": []})
+    assert len(data["conversations"]) == 1
+    row = next(iter(data["conversations"].values()))
+    assert row["cwd"] == "/work/demo"
+    assert row["transcript"] == "/history.jsonl" and row["lineage"] == "parent"
+    assert row["title"] == "Current work" and row["project_ids"]
+
+
+def test_nested_session_discovers_sibling_worktree_on_first_collection(tmp_path, monkeypatch):
+    import session_map.projects as module
+    root, sibling = tmp_path / "main", tmp_path / "sibling"
+    nested = root / "src"
+    nested.mkdir(parents=True)
+    sibling.mkdir()
+    (root / ".git").mkdir()
+    (sibling / ".git").write_text("gitdir: fixture")
+    (sibling / "PLAN.md").write_text("- [ ] P01-T01 Sibling work\n")
+    calls = []
+    def git(directory, *args):
+        directory = Path(directory)
+        calls.append((directory, args))
+        if args == ("rev-parse", "--show-toplevel"):
+            return str(root if directory in (root, nested) else sibling)
+        if args == ("worktree", "list", "--porcelain"):
+            return f"worktree {root}\n\nworktree {sibling}\n"
+        if args[-1] == "--git-common-dir":
+            return str(root / ".git")
+        return ""
+    monkeypatch.setattr(module, "git", git)
+    data = state.new_map({"roots": [], "sources": []})
+    projects, plans, _ = collect_projects(data["config"], [{"cwd": str(nested)}], data, False, None,
+                                         {"plans_parsed": 0, "plan_cache_hits": 0})
+    assert any(args == ("worktree", "list", "--porcelain") for _, args in calls)
+    assert any(p["path"] == str(sibling / "PLAN.md") for p in plans.values())
+    assert len(projects) == 1
+
+
+def test_failed_linked_plan_read_keeps_association_but_removed_link_drops_it(tmp_path, monkeypatch):
+    main_plan, linked = tmp_path / "PROJECTS.md", tmp_path / "phase.md"
+    main_plan.write_text("[Phase](phase.md)\n")
+    linked.write_text("## P01: Work\n- [ ] P01-T01 Implement\n")
+    data = state.new_map({"roots": [str(tmp_path)], "sources": []})
+    def collect_once(data):
+        projects, plans, sources = collect_projects(data["config"], [], data, False, None,
+                                                   {"plans_parsed": 0, "plan_cache_hits": 0})
+        return state.reconcile(data, {"projects": projects, "plans": plans}, sources, {})
+    data = collect_once(data)
+    pid = next(iter(data["projects"]))
+    linked_id = next(key for key, row in data["plans"].items() if row["path"] == str(linked))
+    read_bytes = Path.read_bytes
+    def fail_link(path):
+        if path == linked:
+            raise PermissionError("fixture unreadable plan")
+        return read_bytes(path)
+    monkeypatch.setattr(Path, "read_bytes", fail_link)
+    data = collect_once(data)
+    assert linked_id in data["projects"][pid]["plan_ids"]
+    assert data["plans"][linked_id]["presence"] == "stale"
+    main_plan.write_text("Plan link intentionally removed\n")
+    data = collect_once(data)
+    assert linked_id not in data["projects"][pid]["plan_ids"]
+
+
+def test_new_project_plan_invalidates_session_assessment():
+    data = baseline()
+    payload = assessments(data)
+    payload["assessments"] = [payload["assessments"][0]]
+    payload["assessments"][0]["evidence_ids"] = ["loc:a"]
+    data = state.apply_assessments(data, payload)
+    fresh = observed(data)
+    fresh["projects"]["project:a"]["plan_ids"] = ["plan:new"]
+    fresh["plans"]["plan:new"] = {"id": "plan:new", "source_id": "test", "phases": []}
+    data = state.reconcile(data, fresh, {"test": {"status": "ok"}}, {})
+    assert data["locations"]["loc:a"]["assessment"]["freshness"] == "stale"
+    assert "loc:a" in data["changes"]["reassess"]
