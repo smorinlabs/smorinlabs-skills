@@ -45,7 +45,7 @@ The skill's guide also covers development symlinks and direct copies.
 
 | Skill | Does | Details |
 |---|---|---|
-| `muse-github-setup` | Installs or migrates member-only Muse reviews through the official Claude Code Action, with inline findings, `@muse` follow-ups, progress, reusable summaries, and optional manual fix PRs. | [docs/skills/muse-github-setup.md](docs/skills/muse-github-setup.md) |
+| `muse-github-setup` | Installs or migrates member-only Muse reviews through the official Claude Code Action, with inline findings, `@muse` follow-ups, progress, reusable summaries, and optional manual fix PRs. Also migrates existing OpenCode CLI documentation audit jobs with separate, limited repair permissions. | [docs/skills/muse-github-setup.md](docs/skills/muse-github-setup.md) |
 
 ### fusion-runner
 

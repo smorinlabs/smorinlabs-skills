@@ -6,6 +6,10 @@ automatic PR review, new `@muse` comment follow-ups, inline discussion replies,
 progress tracking, reusable summaries, and optional manually requested fix PRs.
 Neither workflow approves or merges PRs.
 
+An explicitly requested migration can also replace an existing Muse documentation
+audit-triage job that invokes `opencode run`. This separate installer mode preserves
+its limited repair behavior without installing reviews or granting reviews edits.
+
 **Triggers on:** “install Muse reviews”, “set up Muse in GitHub Actions”,
 “migrate Muse from OpenCode”, and requests to add `@muse` PR interactions.
 **Arguments:** none; name the repository and whether manual fix PRs are wanted
@@ -124,6 +128,13 @@ ready. The [acceptance guide](../../plugins/muse-github/skills/muse-github-setup
 explains preview/apply, rollback, credentials, policy readback and required evidence.
 
 ## Validation and rollout
+
+For an existing audit-triage job, use installer `--audit-triage --migrate-opencode`.
+It preserves the workflow path, activation variable, model tier, and unrelated
+review installations while moving the helper/configuration under `.github/`.
+It validates changes before publishing a repair PR. See the
+[audit-triage contract](../../plugins/muse-github/skills/muse-github-setup/references/audit-triage.md)
+for its exact permissions, migration procedure, pilot checks, and rollback.
 
 Future skill changes require validation against the edited source and an actual
 pilot. Local installer/helper tests, workflow lint, manifests and skill

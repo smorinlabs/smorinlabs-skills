@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,21 @@ SKILL = Path(__file__).resolve().parents[1]
 TEMPLATES = SKILL / "templates"
 LEGACY = SKILL / "references/legacy/snapshots.json"
 MANAGED = SKILL / "references/managed/snapshots.json"
+TRIAGE_LEGACY = SKILL / "references/legacy/audit-triage.json"
+TRIAGE_POLICY = ".github/muse-audit-triage/policy.json"
+TRIAGE_OLD_POLICY = ".opencode/audit-triage/policy.json"
+TRIAGE_FILES = {
+    ".github/workflows/audit-triage.yml": ".github/workflows/audit-triage.yml",
+    ".github/scripts/muse_audit_triage.py": ".github/scripts/muse_audit_triage.py",
+    ".github/muse-audit-triage/runtime.py": ".github/scripts/muse_ci.py",
+    TRIAGE_POLICY: TRIAGE_POLICY,
+    ".github/muse-audit-triage/triage-settings.json": ".github/muse-audit-triage/triage-settings.json",
+    ".github/muse-audit-triage/NOTICE": ".github/muse-audit-triage/NOTICE",
+}
+TRIAGE_SWITCHES = ("MUSE_CI_ENABLED", "MUSE_AUDIT_TRIAGE_ENABLED")
+TRIAGE_MARKER = "<!-- muse-github-setup:audit-triage:start -->"
+TRIAGE_END = "<!-- muse-github-setup:audit-triage:end -->"
+TRIAGE_OWNERS = "# Muse audit-triage configuration (muse-github-setup)."
 MARKER = "<!-- muse-github-setup:security:start -->"
 END_MARKER = "<!-- muse-github-setup:security:end -->"
 OWNERS_MARKER = "# Muse CI security-sensitive configuration (muse-github-setup)."
@@ -218,6 +234,118 @@ def apply(root: Path, changes: dict[str, str | None]) -> None:
                 os.unlink(temporary)
 
 
+def triage_render(body: str, organization: str, model: str, activation: str) -> str:
+    return render(body, organization, model).replace("__MUSE_TRIAGE_ENABLED__", activation)
+
+
+def triage_snapshot_matches(current: str, variants: list, organization: str,
+                            model: str, activation: str) -> bool:
+    # Private installation variants are identified without publishing their contents.
+    canonical = current.replace(organization, "__MUSE_ORG__").replace(activation, "__MUSE_TRIAGE_ENABLED__")
+    canonical = canonical.replace(MODELS[model], MODELS[DEFAULT_MODEL]).replace(model, DEFAULT_MODEL)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return any(
+        current == triage_render(variant, organization, model, activation)
+        if isinstance(variant, str) else
+        isinstance(variant, dict) and variant == {"sha256": digest}
+        for variant in variants
+    )
+
+
+def triage_plan(root: Path, organization: str, model: str | None = None,
+                codeowner: str | None = None, migrate_opencode: bool = False) -> dict[str, str | None]:
+    """Migrate an explicitly requested audit job without installing PR reviews."""
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?", organization):
+        raise Conflict("organization must be the actual GitHub organization login")
+    old = destination(root, TRIAGE_OLD_POLICY)
+    new = destination(root, TRIAGE_POLICY)
+    if not old.exists() and not new.exists():
+        raise Conflict("Audit triage requires an existing reviewed installation; fresh automatic repair is not enabled")
+    if old.exists() and new.exists():
+        raise Conflict("Both old and new audit-triage policies exist; reconcile before migrating")
+    if old.exists() and not migrate_opencode:
+        raise Conflict("Legacy audit triage exists; use --migrate-opencode after reviewing the cutover")
+    installed_name = TRIAGE_OLD_POLICY if old.exists() else TRIAGE_POLICY
+    existing_model = policy_model(root, installed_name)
+    selected = model or existing_model
+    if selected not in MODELS:
+        raise Conflict("Unsupported audit-triage model")
+    policy = json.loads(destination(root, installed_name).read_bytes().decode("utf-8"))
+    if policy.get("organization") != organization:
+        raise Conflict("Audit-triage policy organization differs from the requested owner")
+    workflow = destination(root, ".github/workflows/audit-triage.yml")
+    if not workflow.is_file():
+        raise Conflict("Audit-triage workflow is missing")
+    switches = re.findall(r"vars\.(MUSE_(?:AUDIT_TRIAGE_|CI_)ENABLED)\s*==\s*'true'", workflow.read_bytes().decode("utf-8"))
+    if len(switches) != 1 or switches[0] not in TRIAGE_SWITCHES:
+        raise Conflict("Audit-triage activation variable is unknown or ambiguous")
+    activation = switches[0]
+    if not old.exists() and policy.get("activation_variable") != activation:
+        raise Conflict("Audit-triage activation variable conflicts with its policy")
+    changes: dict[str, str | None] = {}
+    recognized: set[str] = set()
+    snapshots = json.loads(TRIAGE_LEGACY.read_bytes().decode("utf-8"))
+    if old.exists():
+        for name, variants in snapshots.items():
+            path = destination(root, name)
+            if not path.is_file() or not triage_snapshot_matches(
+                path.read_bytes().decode("utf-8"), variants, organization, existing_model, activation
+            ):
+                raise Conflict(f"Existing legacy {name} differs; preserve it and prepare a reviewed reconciliation")
+            recognized.add(name)
+            if name not in TRIAGE_FILES:
+                changes[name] = None
+    else:
+        # An incomplete cutover must not silently leave a second agent/configuration.
+        for name in snapshots:
+            if name not in TRIAGE_FILES and destination(root, name).exists():
+                raise Conflict(f"Obsolete audit-triage file remains: {name}; reconcile before updating")
+    for name, source in TRIAGE_FILES.items():
+        body = triage_render((TEMPLATES / source).read_bytes().decode("utf-8"), organization, selected, activation)
+        path = destination(root, name)
+        current = path.read_bytes().decode("utf-8") if path.exists() else None
+        if current is not None and current != body and name not in recognized:
+            expected = triage_render((TEMPLATES / source).read_bytes().decode("utf-8"), organization, existing_model, activation)
+            if current != expected:
+                raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
+        if current != body:
+            changes[name] = body
+    instructions = destination(root, "AGENTS.md")
+    current = instructions.read_bytes().decode("utf-8") if instructions.exists() else ""
+    security = (TEMPLATES / "AGENTS.audit-triage.md").read_bytes().decode("utf-8")
+    counts = current.count(TRIAGE_MARKER), current.count(TRIAGE_END)
+    if counts == (0, 0):
+        separator = ("\n" if current.endswith("\n") else "\n\n") if current else ""
+        changes["AGENTS.md"] = current + separator + security
+    elif counts != (1, 1) or security.strip() not in current:
+        raise Conflict("Existing audit-triage AGENTS.md section differs; reconcile it explicitly")
+    if codeowner is not None:
+        # Reuse existing owner validation without changing the review ownership block.
+        login = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?"
+        if not re.fullmatch(rf"@{login}(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)?", codeowner):
+            raise Conflict("codeowner must be the owner's @login or @organization/team")
+        found = [name for name in OWNERS_FILES if destination(root, name).exists()]
+        if len(found) > 1:
+            raise Conflict("Several CODEOWNERS files exist; reconcile their precedence")
+        name = found[0] if found else OWNERS_FILES[0]
+        current = destination(root, name).read_bytes().decode("utf-8") if found else ""
+        block = "\n".join([TRIAGE_OWNERS,
+            *(f"/{p} {codeowner}" for p in (".github/workflows/audit-triage.yml",
+              ".github/scripts/muse_audit_triage.py", ".github/muse-audit-triage/", "AGENTS.md", name))]) + "\n"
+        if TRIAGE_OWNERS in current:
+            if current.count(TRIAGE_OWNERS) != 1 or block not in current:
+                raise Conflict("Existing audit-triage CODEOWNERS block differs; reconcile owners explicitly")
+            # Last matching CODEOWNERS rule wins; append this authorized block last.
+            remaining = current.replace(block, "", 1)
+        else:
+            remaining = current
+        separator = "" if not remaining or remaining.endswith("\n\n") else ("\n" if remaining.endswith("\n") else "\n\n")
+        updated = remaining + separator + block
+        if updated != current:
+            changes[name] = updated
+    return changes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("worktree", type=Path)
@@ -225,6 +353,7 @@ def main() -> int:
     parser.add_argument("--with-fixes", action="store_true", help="Include the manual new-PR workflow")
     parser.add_argument("--model", choices=MODELS, help="Muse model; omitted preserves an existing policy model")
     parser.add_argument("--migrate-opencode", action="store_true", help="Plan removal of recognized legacy Muse files")
+    parser.add_argument("--audit-triage", action="store_true", help="Migrate only an existing audit-triage job; does not install reviews")
     owners = parser.add_mutually_exclusive_group(required=True)
     owners.add_argument("--codeowner", help="Owner's @login or @organization/team for the Muse CODEOWNERS block")
     owners.add_argument("--no-codeowner", action="store_true", help="Leave CODEOWNERS unchanged")
@@ -235,8 +364,14 @@ def main() -> int:
         probe = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
         if probe.returncode or Path(probe.stdout.strip()).resolve() != root:
             raise Conflict("worktree must name the Git repository root")
-        selected = args.model or policy_model(root, OLD_POLICY) or policy_model(root, NEW_POLICY) or DEFAULT_MODEL
-        changes = plan(root, args.organization, args.with_fixes, args.model, args.codeowner, args.migrate_opencode)
+        if args.audit_triage:
+            if args.with_fixes:
+                raise Conflict("--audit-triage is separate from --with-fixes review installation")
+            selected = args.model or policy_model(root, TRIAGE_OLD_POLICY) or policy_model(root, TRIAGE_POLICY)
+            changes = triage_plan(root, args.organization, args.model, args.codeowner, args.migrate_opencode)
+        else:
+            selected = args.model or policy_model(root, OLD_POLICY) or policy_model(root, NEW_POLICY) or DEFAULT_MODEL
+            changes = plan(root, args.organization, args.with_fixes, args.model, args.codeowner, args.migrate_opencode)
         for name, content in changes.items():
             print(("delete " if content is None else "update " if (root / name).exists() else "create ") + name)
         print(f"model: {selected}")

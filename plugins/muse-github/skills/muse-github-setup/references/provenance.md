@@ -55,3 +55,15 @@ Claude Action migration validation remains pending until the current worktree's
 local checks and pilot matrix are recorded. Historical OpenCode results establish
 only that historical installation. See [acceptance](acceptance.md) for the gates
 and required evidence.
+# Audit-triage continuation
+
+The same pinned Action supports `workflow_run` and `workflow_dispatch` through
+explicit-prompt agent mode. `track_progress: true` selects entity-oriented tag
+mode and is unsuitable for these audit events. The Action's CI MCP server is
+created only for PR contexts, so triage retains trusted frozen failure logs.
+Sources inspected at revision `f3b070c88125d33dbae5653df5f143101d4ea9dc`:
+[mode detection](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/modes/detector.ts),
+[agent preparation](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/modes/agent/index.ts),
+[event context](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/github/context.ts),
+[run authorization](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/entrypoints/run.ts),
+and [CI server installation](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/mcp/install-mcp-server.ts).
