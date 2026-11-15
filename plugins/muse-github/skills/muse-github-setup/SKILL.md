@@ -1,149 +1,130 @@
 ---
 name: muse-github-setup
-description: "Install or update Muse Spark PR reviews with the OpenCode GitHub Action, including optional manually requested fix PRs. Use for 'install Muse reviews', 'set up Muse in GitHub Actions', or 'add the Muse OpenCode action to this repo'. Prepares templates, checks member-only execution protections, provisions or hands off the named CI secret, and verifies the authorized installation. Not for generic OpenCode setup, running a local review, operating an iterative coding loop, or unrelated CI repairs."
+description: "Install, update, or migrate Muse GitHub reviews to the official Anthropic Claude Code Action, keeping Muse as the model backend. Use for 'install Muse reviews', 'set up Muse in GitHub Actions', 'migrate Muse from OpenCode', or adding @muse PR follow-ups and inline discussion replies. Prepares trusted workflows, checks member-only protections and scoped credentials, preserves model/tier choices, and verifies authorized installation and live behavior. Includes optional manually requested fix PRs. Not for generic Claude/OpenCode setup, local code review, an iterative coding loop, or unrelated CI repair."
 allowed-tools: Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion, WebFetch, WebSearch
 ---
 
 # muse-github-setup
 
-Install organization-member PR feedback and optional manual fix PRs using the upstream OpenCode Action with Meta Muse Spark.
+Install and maintain organization-member Muse reviews through the official Claude Code Action, including PR follow-ups and optional manual fix PRs.
 
 ## Workflow
 
-1. **Resolve the request.** Use the named repository or discover it with an
-   available `repo-finder` skill. Establish the actual owner/name, visibility,
-   default branch, local checkout, and existing authorization. Ask only for a
-   missing owner choice. Default to automatic PR feedback; include the manual
-   new-PR workflow when requested. A request to review a plan does not authorize
-   installation. A request to install does not authorize merge or paid test runs.
+1. **Resolve scope and source.** Verify the target owner/name, default branch,
+   visibility, local checkout, current workflows, and existing authorization.
+   Use repository discovery before cloning. Work in an isolated worktree and
+   preserve unrelated changes. Keep this skill's name when migrating an existing
+   installation. A setup request covers preparation; use the user's established
+   authorization for publishing, activation, and bounded paid acceptance tests.
+   Do not ask again for an action already authorized. Resolve genuine missing
+   owner decisions before their dependent action.
 
-2. **Check prerequisites before editing.** Read
-   [security and compatibility](references/security.md). Inspect existing
-   workflows, OpenCode JSON/JSONC configuration, `AGENTS.md`, `.opencode/`,
-   CODEOWNERS, branch rules, and execution policies. The templates require an
-   organization-owned GitHub.com repository and GitHub-hosted Ubuntu runners.
-   Check the organization's approved team for execution policies
-   (`gh api orgs/OWNER/teams`); when none exists, follow the no-team branch in
-   [acceptance](references/acceptance.md). Find existing consumers of
-   `MUSE_CI_ENABLED` and `META_MUSE_CI_API_KEY` (for example a blueprint
-   `audit-triage.yml`): setting the variable arms every workflow it gates, so
-   report that coupling before activation. Do not treat
-   repository write access or `author_association` as proof of current membership.
-   Private memberships need the organization's Members-read GitHub App, whose
-   token each workflow mints (see [secrets](references/secrets.md)); the
-   repository `GITHUB_TOKEN` cannot prove membership. Identify that
-   prerequisite before enabling anything.
-   Inspect who can change workflow files on PR branches. If outside
-   collaborators can write, require server-enforced file-path push restrictions
-   with member-only bypass before activation. CODEOWNERS does not prevent a
-   changed PR workflow from running before merge. Otherwise verify that all
-   workflow writers are trusted organization members. Unresolved write access
-   is an activation blocker, not an assumed safe default.
-   For manual fixes, inspect the repository's secret-file conventions against
-   the helper's filename policy. Preparation refuses common credential-like
-   tracked files; arbitrary embedded secrets need human inspection. The helper
-   is a vendored managed file, so a policy change for one repository goes
-   upstream into this skill's template, never into the installed copy.
+2. **Inspect prerequisites.** Read [security](references/security.md), then inspect
+   `.github/workflows/`, `.github/scripts/muse_ci.py`, `.github/muse-ci/`,
+   `.opencode/muse-ci/`, root OpenCode config, project instructions, CODEOWNERS,
+   branch rules, workflow execution policies, and repository writers. Templates
+   require an organization-owned GitHub.com repository and fresh GitHub-hosted
+   Ubuntu runners. Current human organization membership and repository write
+   access are separate requirements. Private membership uses the dedicated
+   Members-read App described in [secrets](references/secrets.md).
+   CODEOWNERS alone cannot stop a modified PR workflow from executing. Verify
+   the writer boundary and exact workflow-path policies before activation.
+   Find every consumer of `MUSE_CI_ENABLED` before changing it; preserve its
+   existing state until the replacement is ready.
 
-3. **Set the model and credential contract.** The default model is
-   `model_api/muse-spark-1.3-contributor` at `https://api.meta.ai/v1`, with the
-   repository Actions secret `META_MUSE_CI_API_KEY`. The provider reads
-   `{env:META_MUSE_CI_API_KEY}`. Use the Meta key scope the owner chose: one key
-   per GitHub owner, or one per repository.
-   The contributor tier permits Meta to use submitted content for training;
-   disclose that when choosing it for a repository. Honor an existing owner
-   decision rather than asking again. A tier decision made for a public
-   repository does not carry over to a private one: for a private repository,
-   present the standard tier (`muse-spark-1.3`, recommended), the contributor
-   tier, and not installing as a new owner decision. A restriction against
-   sharing private code with that tier requires a new model decision, never a
-   silent fallback. The installer's plan prints the `model:` it will render;
-   confirm it before `--apply`.
-   Use another listed model only when the owner explicitly asks for it, and
-   pass it to the installer as `--model`:
+3. **Preserve the model and credentials.** Omitted `--model` preserves the model
+   recorded in an existing managed policy. A fresh install defaults to
+   `muse-spark-1.3-contributor`; Meta may use contributor content for training.
+   Preserve an established tier decision. A private repository without one
+   needs an owner decision: recommend `muse-spark-1.3` standard tier, explain
+   contributor data use, and include not installing as an option. Never silently
+   change a private repository's tier or credential scope. The other supported
+   model is `muse-wonder-1.0`. All Claude model aliases and subagent routing stay
+   on the selected Muse ID. Claude uses `https://api.meta.ai` without `/v1`.
+   Anthropic does not support non-Claude backends; Meta documents compatibility.
 
-   | `--model` | Use |
-   |---|---|
-   | `muse-spark-1.3-contributor` | Default; Meta may train on submitted content |
-   | `muse-spark-1.3` | Standard tier; no training on submitted content |
-   | `muse-wonder-1.0` | Muse Wonder 1.0, on explicit request |
+4. **Preview the installation.** Resolve `scripts/install.py` relative to this
+   skill and invoke it with Python from the source worktree. Supply the target
+   repository root, `--organization` with its verified owner, and `--codeowner`
+   with the approved `@login` or `@organization/team`. Use `--no-codeowner` only
+   when ownership is managed separately. Add `--with-fixes` for requested manual
+   fix PRs and `--model` only for a deliberate model selection. Add
+   `--migrate-opencode` for an existing managed OpenCode installation. Default
+   execution prints a plan; `--apply` writes local files. Inspect the printed
+   model and every deletion before applying. Read [acceptance](references/acceptance.md)
+   for the complete cutover, idempotence, and rollback procedure.
+   Known legacy files migrate only when they match a recorded snapshot exactly.
+   Modified legacy files require reviewed reconciliation; do not force overwrite.
+   Existing optional fix support and model choice are retained. Root
+   `opencode.json`/`opencode.jsonc` and unrelated OpenCode content are preserved.
 
-4. **Prepare the files in an isolated worktree.** Install the target's hook
-   dependencies before the first commit there (for example
-   `bun install --frozen-lockfile` when `bun.lock` exists); a fresh worktree
-   lacks them. Resolve this skill directory
-   through its installed path. Run its `scripts/install.py` with the target
-   worktree and `--organization` set to the actual owner. Add `--with-fixes` for
-   the requested manual workflow, and `--model` only for an explicitly requested
-   non-default model. Pass `--codeowner` with the reviewing owner's `@login` or
-   `@organization/team`; ask for it when unknown, never guess it. The installer
-   then adds a marked Muse block to the CODEOWNERS file GitHub already reads,
-   or creates `.github/CODEOWNERS`. The installer requires that choice: pass
-   `--no-codeowner` only when the owner manages that ownership another way,
-   and then add it by hand. The default prints a plan; `--apply` writes
-   local files. It never installs secrets or enables workflows. Review its diff.
-   Existing project instructions are preserved and the security section is
-   appended. Existing OpenCode settings are preserved; conflicting providers,
-   JSONC files, symlinks, CODEOWNERS blocks, or changed managed files require a
-   reviewed merge.
-   Do not overwrite those files to force the helper to pass. Adapt project
-   guidance in `AGENTS.md` without removing the security constraints. Preserve
-   the copied upstream NOTICE. Check the target's Python lint and format hooks
-   (for example a `ruff` pre-commit hook): `.github/scripts/muse_ci.py` is a
-   vendored managed file, so exclude it from those tools (for example
-   `[tool.ruff] exclude`, with a comment) rather than editing it. Revert any
-   hook autofix so the file stays byte-identical to the template.
+5. **Review the rendered changes.** The managed paths are
+   `.github/workflows/muse-pr-review.yml`, `muse-followup.yml`, optional
+   `muse-fix-pr.yml`, `.github/scripts/muse_ci.py`, and `.github/muse-ci/`.
+   The installer updates its marked `AGENTS.md` and CODEOWNERS sections while
+   preserving surrounding content. Remove recognized obsolete Muse workflows
+   in the same cutover to avoid duplicate bots. Update exact workflow-path
+   execution policies and any required-check names deliberately. The helper is
+   vendored: keep it byte-identical to the template and exclude it from target
+   formatter autofixes. Project-specific policy changes belong upstream in
+   this skill, followed by re-rendering.
 
-5. **Provision only the intended secrets.** Read
-   [credential provisioning](references/secrets.md). If an installed private
-   `repo-secrets` skill supports `--app muse-ci`, delegate just that application
-   with the exact repository and `--workflow-root` pointing to this worktree.
-   Otherwise perform the documented secure handoff. Never require a private
-   repository, invent a 1Password reference, request a secret in chat, or copy
-   another repository's key. Metadata presence and successful authentication
-   are separate checks. Membership credentials are not Meta credentials.
+6. **Provision only required credentials.** Follow [secrets](references/secrets.md).
+   Preserve existing secret values and scope; inspect names only. Use a compatible
+   installed `repo-secrets` provisioner when available, otherwise provide its
+   secure manual fallback. Never invent a private secret-manager reference or
+   ask for a key in chat. No new Anthropic API key or Claude GitHub App is needed.
+   The Meta key satisfies the action launch check and supplies Meta bearer auth.
+   Every action invocation must set `classify_inline_comments: 'false'`.
 
-6. **Review the activation prerequisites.** Use
-   [installation and acceptance](references/acceptance.md). Protect the default
-   branch and require human review for both workflows, the helper,
-   `.opencode/muse-ci/`, root OpenCode config, and the security instructions.
-   Scope GitHub workflow execution policies to the exact two workflow paths,
-   approved organization team, and their respective events. Confirm active
-   enforcement with the API/UI. Unavailable protections are a prerequisite
-   failure, not permission to relax the design. Keep `MUSE_CI_ENABLED` unset
-   until these checks and credential installation succeed. Do not change
-   unrelated Actions policies or install a privileged GitHub App automatically.
+7. **Validate, then prove one pilot.** Run workflow lint, meaningful installer and
+   helper tests, manifest checks, and skill-quality/load checks against this
+   edited source worktree. Record passed, failed, and skipped checks separately.
+   Local success is Gate A, not proof of GitHub interaction. Follow the target's
+   normal branch/review/merge rules. After authorized installation and activation,
+   complete the pilot matrix in [acceptance](references/acceptance.md): inline
+   finding, top-level follow-up, inline reply, progress, reusable summary, repeat
+   trigger, stale handling, and rejection before model use. Diagnose a paid
+   failure before retrying. Never approve or merge a generated fix PR.
 
-7. **Validate within the authorized scope.** Check rendered YAML with
-   `actionlint`, run `tests/test_muse_github.py` (at the smorinlabs-skills repo
-   root) when developing from the source checkout,
-   and inspect the complete diff. Commit or open a PR when authorized; merge
-   and activation follow the user's existing scope. With live testing
-   authorized, enable the repository variable and run the acceptance matrix.
-   Stop after one successful review and, when included, one successful manual
-   fix PR; unexpected paid failures require diagnosis before another attempt.
-   Never merge or approve the generated fix PR. Report file creation, secret
-   presence, policy enforcement, actual review comment, and actual fix PR as
-   distinct statuses. A local check cannot establish a live installation.
+8. **Roll out within the approved scope.** The first pilot's complete acceptance
+   is Gate B. Inventory may proceed earlier; consumer migrations may not. After
+   Gate B, start with one or two similar repositories, verify each, then expand
+   cautiously. Keep a ledger of identified, excluded, prepared, installed,
+   activated, live-verified, failed, and blocked repositories with exact commits
+   and evidence URLs. Stop batches on a systemic failure and fix the shared
+   skill first. Do not count unresolved repositories as complete.
 
-## Boundaries
+## Supported behavior
 
-- Reviews run automatically on eligible PR events. They are not comment-triggered.
-  Their output is feedback, not GitHub approval. The initial profile has no
-  model tools and reviews a bounded, immutable diff; it does not run tests.
-- Fixes use `workflow_dispatch` from the default branch. OpenCode creates a
-  fresh branch and PR. `/oc` commands, issue triage, automatic bugfix labels,
-  stale cleanup, approval, and merge are outside these templates.
-- The direct upstream Action is SHA-pinned, but its installer, selected CLI,
-  and transitive cache action move. Do not describe the runtime as fully pinned.
-  Compatibility must be rechecked when those dependencies change.
-- Session sharing is disabled. Model and GitHub credentials are restricted
-  to the steps that need them. Project code is never executed in the
-  credential-bearing agent step. The moving runtime remains a trusted dependency.
+| Surface | Behavior |
+|---|---|
+| Automatic PR review | Open/update/reopen/ready events on eligible PRs; inline findings, live progress, then a helper-maintained reusable summary |
+| `@muse` top-level PR comment | New eligible human comment starts a separate follow-up response with PR context |
+| `@muse` inline review comment | New eligible human comment starts a response in that discussion; actual thread placement must pass pilot acceptance |
+| Optional manual fix | Default-branch `workflow_dispatch`; local file edits followed by trusted helper branch/PR publication for human review |
+
+Reviews permit the runtime's read-only tools, including native file listing/search,
+web tools, resource inspection, and CI status/log inspection. Backend and network
+support for web tools still requires live verification; permission is not proof
+that a provider supports a tool. Reviews cannot edit code or run project commands.
+The optional fix workflow separately authorizes ordinary-file edits.
+Tag mode supplies progress tracking; the helper supplies
+summary reuse because upstream sticky matching does not reliably recognize
+`github-actions[bot]`. Follow-up responses remain in their discussions. The helper verifies a successful
+comment-update tool result and publication readback. If the upstream action falls
+back to top-level progress for an inline reply, the helper relocates its completed
+answer to the validated discussion root before declaring success.
+
+Do not enable issue triage, bot triggers, automatic fixes, approvals, merges,
+unrestricted tools, or unrelated automation. The direct action is SHA-pinned;
+its installer and dependency resolution remain external trust dependencies.
+Read controls are runtime permissions, not an OS sandbox. Findings may publish
+before a final stale-head check; do not promise atomic current-head publication.
 
 ## References
 
-- [Security](references/security.md): enforcement, permissions, and upstream limits.
-- [Secrets](references/secrets.md): optional private provisioning and public fallback.
-- [Acceptance](references/acceptance.md): installation sequence and live evidence.
-- [Provenance](references/provenance.md): cookbook and Action source snapshots.
+- [Security](references/security.md): actors, permissions, isolation, and limits.
+- [Acceptance](references/acceptance.md): installation, cutover, pilot evidence, rollback.
+- [Secrets](references/secrets.md): scoped credentials and secure provisioning.
+- [Provenance](references/provenance.md): exact inspected sources and runtime versions.

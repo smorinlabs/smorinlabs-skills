@@ -61,6 +61,7 @@ def repo_pair(tmp_path):
 
 def event(base="a" * 40, head="b" * 40):
     return {
+        "action": "opened",
         "repository": {"full_name": "fixture-org/project", "default_branch": "main",
                        "owner": {"login": "fixture-org", "type": "Organization"}},
         "pull_request": {"number": 7, "state": "open", "draft": False,
@@ -78,6 +79,14 @@ class API:
         self.bots = bots
         self.readonly = readonly
         self.calls = []
+        self.comments = []
+
+    def pages(self, path):
+        assert path.endswith("/issues/7/comments")
+        return self.comments
+
+    def request(self, method, path, data=None):
+        self.calls.append((method, path, data))
 
     def get(self, path):
         self.calls.append(path)
@@ -107,21 +116,21 @@ def test_install_preserves_project_and_is_idempotent(tmp_path):
     assert (tmp_path / ".opencode/notes.md").read_text() == "Keep this.\n"
     config = json.loads((tmp_path / "opencode.json").read_text())
     assert config["model"] == "other/default" and "other" in config["provider"]
-    assert config["provider"]["model_api"]["options"]["apiKey"] == "{env:META_MUSE_CI_API_KEY}"
+    assert config == {"model": "other/default", "provider": {"other": {}}}
     assert installer.plan(tmp_path, "fixture-org", with_fixes=True) == {}
 
 
 def test_review_only_install_can_add_fixes_later(tmp_path):
     installer.apply(tmp_path, installer.plan(tmp_path, "fixture-org"))
-    assert not (tmp_path / ".github/workflows/opencode-fix-pr.yml").exists()
+    assert not (tmp_path / ".github/workflows/muse-fix-pr.yml").exists()
     assert set(installer.plan(tmp_path, "fixture-org", with_fixes=True)) == {
-        ".github/workflows/opencode-fix-pr.yml", ".opencode/muse-ci/fix.json",
+        ".github/workflows/muse-fix-pr.yml", ".github/muse-ci/fix-settings.json",
     }
 
 
 @pytest.mark.parametrize("filename,body", [
-    ("opencode.jsonc", "{ // Preserve comments\n}"),
-    ("opencode.json", '{"provider":{"model_api":{"name":"Existing"}}}'),
+    (".github/muse-ci/review-settings.json", '{"permissions":{"allow":["Bash"]}}'),
+    (".github/workflows/muse-followup.yml", "name: Existing\n"),
     (".github/workflows/opencode-pr-review.yml", "name: Existing\n"),
     ("AGENTS.md", installer.MARKER + "\nCustom policy\n"),
 ])
@@ -132,7 +141,7 @@ def test_conflicts_are_not_overwritten(tmp_path, filename, body):
     with pytest.raises(installer.Conflict):
         installer.plan(tmp_path, "fixture-org")
     assert target.read_text() == body
-    assert not (tmp_path / ".opencode/muse-ci/policy.json").exists()
+    assert not (tmp_path / ".github/muse-ci/policy.json").exists()
 
 
 def test_install_rejects_symlink_parent(tmp_path):
@@ -149,10 +158,9 @@ def test_install_rejects_symlink_parent(tmp_path):
 OWNERS_BLOCK = (
     "# Muse CI security-sensitive configuration (muse-github-setup).\n"
     "# CODEOWNERS is not enforcement on its own; branch rules must require review.\n"
-    "/.github/workflows/opencode-*.yml @fixture-org/maintainers\n"
+    "/.github/workflows/muse-*.yml @fixture-org/maintainers\n"
     "/.github/scripts/muse_ci.py @fixture-org/maintainers\n"
-    "/.opencode/muse-ci/ @fixture-org/maintainers\n"
-    "/opencode.json @fixture-org/maintainers\n"
+    "/.github/muse-ci/ @fixture-org/maintainers\n"
     "/AGENTS.md @fixture-org/maintainers\n"
 )
 
@@ -240,23 +248,23 @@ def test_cli_codeowner_choice_controls_the_plan(tmp_path):
 
 def test_default_model_is_contributor():
     assert installer.DEFAULT_MODEL == "muse-spark-1.3-contributor"
-    assert ci.MODEL == "model_api/" + installer.DEFAULT_MODEL
+    assert ci.MODEL == installer.DEFAULT_MODEL
     assert set(installer.MODELS) == {"muse-spark-1.3-contributor", "muse-spark-1.3", "muse-wonder-1.0"}
 
 
 @pytest.mark.parametrize("model", ["muse-spark-1.3-contributor", "muse-spark-1.3", "muse-wonder-1.0"])
 def test_install_writes_one_model_everywhere(tmp_path, model):
     changes = installer.plan(tmp_path, "fixture-org", with_fixes=True, model=model)
-    pinned = f"model_api/{model}"
-    assert json.loads(changes[".opencode/muse-ci/policy.json"])["model"] == pinned
-    assert f'MODEL = "{pinned}"' in changes[".github/scripts/muse_ci.py"]
-    for name in ("pr-review", "fix-pr"):
-        workflow = yaml.load(changes[f".github/workflows/opencode-{name}.yml"], Loader=yaml.BaseLoader)
+    assert json.loads(changes[".github/muse-ci/policy.json"])["model"] == model
+    assert f'MODEL = "{model}"' in changes[".github/scripts/muse_ci.py"]
+    for name in ("pr-review", "followup", "fix-pr"):
+        workflow = yaml.load(changes[f".github/workflows/muse-{name}.yml"], Loader=yaml.BaseLoader)
         job = next(iter(workflow["jobs"].values()))
-        action = next(step for step in job["steps"] if step.get("uses", "").startswith("anomalyco/"))
-        assert action["with"]["model"] == pinned
-    provider = json.loads(changes["opencode.json"])["provider"]["model_api"]
-    assert provider["models"] == {model: {"name": installer.MODELS[model], "limit": {"context": 1048576, "output": 131072}}}
+        action = next(step for step in job["steps"] if step.get("uses", "").startswith("anthropics/"))
+        for key in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            assert action["env"][key] == model
+    assert "opencode.json" not in changes
     if model != installer.DEFAULT_MODEL:
         assert not any("contributor" in body.lower() for name, body in changes.items() if name != "AGENTS.md")
 
@@ -342,7 +350,7 @@ def test_upstream_fetch_cannot_advance_frozen_local_branch(repo_pair):
     git(author, "commit", "-am", "newer commit")
     git(author, "push", "origin", "feature/review")
     newer = git(author, "rev-parse", "HEAD")
-    # Actual v1.18.31 checkoutLocalBranch sequence, after remote advancement.
+    # Fetching newer remote commits must not move the helper's frozen local branch.
     git(runner, "fetch", "origin", "--depth=20", "feature/review")
     git(runner, "checkout", "feature/review")
     assert git(runner, "rev-parse", "HEAD") == expected
@@ -363,29 +371,41 @@ def test_prepare_generates_isolated_configuration_and_exact_diff(repo_pair, tmp_
         "GITHUB_ACTOR": "original", "MUSE_TRIGGERING_ACTOR": "rerunner", "GH_TOKEN": "fixture-value",
         "RUNNER_TEMP": str(tmp_path), "GITHUB_ENV": str(tmp_path / "env"), "GITHUB_OUTPUT": str(tmp_path / "output"),
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        "GITHUB_RUN_ID": "123",
     }
     ci.prepare("review", environ)
     runtimes = list(tmp_path.glob("muse-ci-*"))
     assert len(runtimes) == 1
-    config = json.loads((runtimes[0] / "config.json").read_text())
-    assert config["permission"] == {"*": "deny"}
-    assert config["default_agent"] == "muse-review" and config["share"] == "disabled"
-    assert config["formatter"] is False and config["lsp"] is False
-    assert config["small_model"] == ci.MODEL
-    assert "fixture-value" not in (runtimes[0] / "config.json").read_text()
-    assert config["provider"]["model_api"]["options"]["apiKey"] == "{env:META_MUSE_CI_API_KEY}"
+    config = json.loads((runtimes[0] / "settings.json").read_text())
+    assert config["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+    assert config["permissions"]["denyInsteadOfPrompting"] is True
+    assert "Bash" in config["permissions"]["deny"] and "Edit" in config["permissions"]["deny"]
+    assert "fixture-value" not in (runtimes[0] / "settings.json").read_text()
     output = (tmp_path / "output").read_text()
     assert head in output and "-answer = 1" in output and "+answer = 2" in output
     env_file = (tmp_path / "env").read_text()
-    assert "OPENCODE_DISABLE_PROJECT_CONFIG" in env_file and "fixture-value" not in env_file
+    assert "CLAUDE_CONFIG_DIR" in env_file and "fixture-value" not in env_file
     assert git(runner, "status", "--porcelain") == ""
     state = runtimes[0] / "state.json"
-    ci.finish("review", {**environ, "MUSE_CI_STATE": str(state)})
+    api.comments = [{"id": 12, "user": {"login": "github-actions[bot]", "type": "Bot"},
+                     "html_url": "https://github.com/fixture-org/project/pull/7#issuecomment-12",
+                     "body": "Review complete https://github.com/fixture-org/project/actions/runs/123"}]
+    execution = tmp_path / "execution.json"
+    execution.write_text(json.dumps([
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "update_1",
+            "name": "mcp__github_comment__update_claude_comment", "input": {"body": "Review complete"}}]}},
+        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "update_1",
+            "content": json.dumps({"id": 12, "html_url": api.comments[0]["html_url"]})}]}},
+        {"type": "result", "subtype": "success", "is_error": False},
+    ]))
+    final_env = {**environ, "MUSE_CI_STATE": str(state), "MUSE_ACTION_OUTCOME": "success",
+                 "MUSE_ACTION_CONCLUSION": "success", "MUSE_EXECUTION_FILE": str(execution)}
+    ci.finish("review", final_env)
     assert head in (tmp_path / "summary").read_text()
     api.payload = copy.deepcopy(payload)
     api.payload["pull_request"]["head"]["sha"] = "c" * 40
     with pytest.raises(ci.Refusal, match="stale"):
-        ci.finish("review", {**environ, "MUSE_CI_STATE": str(state)})
+        ci.finish("review", final_env)
     assert "c" * 40 in (tmp_path / "summary").read_text()
 
 
@@ -429,18 +449,15 @@ def test_fix_accepts_ordinary_tracked_project_files(tmp_path, monkeypatch):
     assert not ci.sensitive("src/app.py")
 
 
-def test_fix_rules_cover_mixed_case_sensitive_paths_and_preserve_normal_edits():
-    config = ci.configuration(SKILL / "templates", "fix")
-    # Exercise the documented last-match wildcard policy on the generated rules.
-    for tool in ("read", "edit"):
-        rules = config["permission"][tool]
+def test_fix_rules_cover_mixed_case_sensitive_paths_and_preserve_normal_edits(tmp_path):
+    config = ci.configuration(SKILL / "templates", "fix", tmp_path / "runtime")
+    # Static coverage of generated filename rules; live CLI permission behavior has a separate probe.
+    for tool in ("Read", "Edit"):
+        rules = [r[len(tool) + 1:-1] for r in config["permissions"]["deny"] if r.startswith(tool + "(")]
         for name in (".env", "config/.ENV", "prod.EnV.local", "keys/private.PEM", "test.kEy"):
-            matching = [action for pattern, action in rules.items() if fnmatch.fnmatchcase(name, pattern)]
-            assert matching[-1] == "deny", (tool, name)
-        matching = [action for pattern, action in rules.items() if fnmatch.fnmatchcase("src/app.py", pattern)]
-        assert matching[-1] == "allow"
-    rules = config["permission"]["edit"]
-    assert [v for k, v in rules.items() if fnmatch.fnmatchcase(".github/workflows/ci.yml", k)][-1] == "deny"
+            assert any(fnmatch.fnmatchcase(name, pattern) for pattern in rules), (tool, name)
+        assert not any(fnmatch.fnmatchcase("src/app.py", pattern) for pattern in rules)
+    assert "Edit(.github/**)" in config["permissions"]["deny"]
 
 
 @pytest.mark.parametrize("kind", ["large", "encoded_large", "credential"])
@@ -463,6 +480,7 @@ def test_unsafe_review_input_never_publishes_model_prompt(repo_pair, tmp_path, m
         "GITHUB_EVENT_NAME": "pull_request", "GITHUB_REPOSITORY": "fixture-org/project",
         "GITHUB_ACTOR": "original", "MUSE_TRIGGERING_ACTOR": "rerunner", "GH_TOKEN": "fixture-value",
         "RUNNER_TEMP": str(tmp_path), "GITHUB_ENV": str(tmp_path / "env"), "GITHUB_OUTPUT": str(tmp_path / "output"),
+        "GITHUB_RUN_ID": "123",
     }
     message = {"large": "diff limit", "encoded_large": "Encoded prompt", "credential": "credential-like"}[kind]
     with pytest.raises(ci.Refusal, match=message):
@@ -473,26 +491,41 @@ def test_unsafe_review_input_never_publishes_model_prompt(repo_pair, tmp_path, m
 
 def test_templates_have_separate_events_and_only_step_scoped_secrets():
     documents = {
-        name: yaml.load((SKILL / f"templates/.github/workflows/opencode-{name}.yml").read_text(), Loader=yaml.BaseLoader)
-        for name in ("pr-review", "fix-pr")
+        name: yaml.load((SKILL / f"templates/.github/workflows/muse-{name}.yml").read_text(), Loader=yaml.BaseLoader)
+        for name in ("pr-review", "followup", "fix-pr")
     }
     assert set(documents["pr-review"]["on"]) == {"pull_request"}
     assert set(documents["fix-pr"]["on"]) == {"workflow_dispatch"}
+    assert set(documents["followup"]["on"]) == {"issue_comment", "pull_request_review_comment"}
     for document in documents.values():
         assert document["permissions"] == {}
         assert "env" not in document
         job = next(iter(document["jobs"].values()))
         assert "env" not in job and "id-token" not in job["permissions"]
-        action = next(step for step in job["steps"] if step.get("uses", "").startswith("anomalyco/"))
-        assert action["with"]["model"] == ci.MODEL
-        assert action["with"]["share"] == "false" and action["with"]["use_github_token"] == "true"
+        action = next(step for step in job["steps"] if step.get("uses", "").startswith("anthropics/"))
+        assert action["env"]["ANTHROPIC_MODEL"] == ci.MODEL
+        assert action["env"]["ANTHROPIC_BASE_URL"] == "https://api.meta.ai"
+        assert action["with"]["classify_inline_comments"] == "false"
+        assert action["with"]["include_fix_links"] == "false"
+        assert action["with"]["github_token"] == "${{ github.token }}"
+        assert "--restricted" in action["with"]["claude_args"]
+        assert "--disable-slash-commands" in action["with"]["claude_args"]
+        assert "--bare" not in action["with"]["claude_args"]
+        assert "--setting-sources user" in action["with"]["claude_args"]
+        assert '--settings "${{ steps.prepare.outputs.settings }}"' in action["with"]["claude_args"]
+        assert "--permission-mode default" in action["with"]["claude_args"]
+        for tool in ("Read", "Glob", "Grep", "WebFetch", "WebSearch", "ToolSearch",
+                     "ListMcpResourcesTool", "ReadMcpResourceTool", "LSP"):
+            assert tool in action["with"]["claude_args"]
+        assert "mcp__github_ci__download_job_log" not in action["with"]["claude_args"]
+        assert '--add-dir "${{ steps.prepare.outputs.ci_logs }}"' in action["with"]["claude_args"]
         assert "MUSE_MEMBERS_TOKEN" not in action["env"]
         assert len(action["uses"].rsplit("@", 1)[1]) == 40
 
 
 def test_membership_token_is_minted_from_a_members_read_app():
-    for name in ("pr-review", "fix-pr"):
-        text = (SKILL / f"templates/.github/workflows/opencode-{name}.yml").read_text()
+    for name in ("pr-review", "followup", "fix-pr"):
+        text = (SKILL / f"templates/.github/workflows/muse-{name}.yml").read_text()
         assert "MUSE_CI_GITHUB_MEMBERS_TOKEN" not in text
         job = next(iter(yaml.load(text, Loader=yaml.BaseLoader)["jobs"].values()))
         steps = job["steps"]
@@ -515,7 +548,7 @@ def test_membership_token_is_minted_from_a_members_read_app():
 
 def test_cli_plan_names_the_rendered_model(tmp_path):
     default = run_installer(tmp_path / "default", "--codeowner", "@fixture-org/maintainers")
-    assert default.returncode == 0 and "model: model_api/muse-spark-1.3-contributor" in default.stdout
+    assert default.returncode == 0 and "model: muse-spark-1.3-contributor" in default.stdout
     standard = run_installer(tmp_path / "standard", "--codeowner", "@fixture-org/maintainers",
                              "--model", "muse-spark-1.3")
-    assert standard.returncode == 0 and "model: model_api/muse-spark-1.3\n" in standard.stdout
+    assert standard.returncode == 0 and "model: muse-spark-1.3\n" in standard.stdout
