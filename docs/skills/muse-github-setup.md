@@ -36,6 +36,10 @@ Editing/writing requires the separate optional fix workflow. Web tools still
 need provider/network support; local permission tests do not establish real
 WebSearch/WebFetch success.
 
+The finalizer logs read-only tool-call counts and correlated success/error counts.
+These diagnostics omit tool arguments and response contents. A successful tool
+result establishes execution; verify the returned information separately.
+
 The action shows live progress. A trusted helper consolidates completed automatic reviews
 into a reusable marked summary because upstream sticky matching does not reliably
 recognize the repository-token bot. Comment follow-ups retain separate responses;

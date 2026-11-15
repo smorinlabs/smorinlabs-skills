@@ -2683,7 +2683,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       the variables decide. Bump session 0.18.1 → 0.18.2.
 - [ ] [P73-T16] Release session 0.18.2
 
-## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.1)
+## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.2)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
 with the official Anthropic Action while preserving Meta Muse routing. Add inline
 findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
@@ -2696,14 +2696,16 @@ eligible organization repositories in small verified batches.
 - [x] [P74-T03] Refresh skill instructions, security/acceptance/provenance/secrets references, docs page, README row, plugin version, and manifests.
 - [x] [P74-T04] Validate local behavior, workflow syntax, skill loading, and independent implementation review; resolve findings before the pilot.
 - [x] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement (0.5.0 in #119).
-- [ ] [P74-T08] Repair late pilot review findings, validate managed-version updates, and land 0.5.1 before live acceptance.
+- [x] [P74-T08] Repair late pilot review findings, validate managed-version updates, and land 0.5.1 before live acceptance (#120; consumer repair smorinlabs/lost-sessions#32).
+- [ ] [P74-T09] Add sanitized read-only tool execution counts and repair the pilot's turn-budget exhaustion before retrying live acceptance.
 - [ ] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on one live pilot.
 - [ ] [P74-T07] Migrate remaining eligible repositories incrementally, recording exact installation and live-verification evidence.
 
 ### Validation status
-Version 0.5.0 landed in #119 and its installed placement was verified. Pilot setup
-landed in smorinlabs/lost-sessions#31; activation remains paused while five late
-review findings are repaired in 0.5.1 before live acceptance.
+Versions 0.5.0 and 0.5.1 landed in #119 and #120; the installed placement was
+verified. Pilot setup and repair landed in smorinlabs/lost-sessions#31 and #32.
+All five findings were resolved with evidence, policies were read back, and the
+pilot's original enabled state was restored. Live acceptance is pending.
 
 The 0.5.1 focused Muse suite passes 215 tests. All three workflows pass actionlint;
 generated manifests and name/whitespace checks pass. Real Claude CLI probes pass
@@ -2714,4 +2716,12 @@ Known 0.5.0 output upgrades with 4 previewed/applied changes and zero on repeat,
 preserving the standard model, optional fixes, and unrelated configuration.
 Claude Code, Codex, and Muse deep skill loads pass. Generated manifest metadata
 and Muse advisory allowed-tools metadata retain non-blocking static warnings.
-Repair landing, live pilot, and rollout remain pending.
+The first live attempt in smorinlabs/lost-sessions#34 posted the correct inline
+finding and visible progress, then exhausted its 12-turn budget before completing
+the summary. The failed run is 43695466125; this does not pass live acceptance.
+Version 0.5.2 adds sanitized tool execution counts, a bounded 24-turn review and
+follow-up budget, and guidance against placeholder comments for tool discovery.
+Its 246 focused tests, all three workflow lint checks, generated manifests, and
+name/whitespace checks pass. Exact 0.5.1 output upgrades with 3 changes and zero
+on repeat, retaining the model, optional fixes, and unrelated configuration.
+Source landing, live pilot acceptance, and rollout remain pending.
