@@ -145,7 +145,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
             target = destination(root, name)
             if not target.exists():
                 continue
-            current = target.read_text()
+            current = target.read_bytes().decode("utf-8")
             # Legacy files are validated against their original model, not the selected replacement.
             if not any(current == render(body, organization, legacy_model) for body in snapshots[name]):
                 raise Conflict(f"Existing legacy {name} differs; preserve it and prepare a reviewed reconciliation")
@@ -155,20 +155,21 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
     for name in TEMPLATE_FILES:
         if not with_fixes and name in OPTIONAL:
             continue
-        body = render((TEMPLATES / name).read_text(), organization, selected)
+        body = render((TEMPLATES / name).read_bytes().decode("utf-8"), organization, selected)
         target = destination(root, name)
-        if target.exists() and target.read_text() != body and name not in recognized:
+        current = target.read_bytes().decode("utf-8") if target.exists() else None
+        if current is not None and current != body and name not in recognized:
             known = installed_model is not None and any(
-                target.read_text() == render(old, organization, installed_model)
+                current == render(old, organization, installed_model)
                 for old in previous.get(name, [])
             )
             if not known:
                 raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
-        if not target.exists() or target.read_text() != body:
+        if current != body:
             changes[name] = body
     instructions = destination(root, "AGENTS.md")
-    current = instructions.read_text() if instructions.exists() else ""
-    security = (TEMPLATES / "AGENTS.muse.md").read_text()
+    current = instructions.read_bytes().decode("utf-8") if instructions.exists() else ""
+    security = (TEMPLATES / "AGENTS.muse.md").read_bytes().decode("utf-8")
     marker_counts = current.count(MARKER), current.count(END_MARKER)
     if marker_counts != (0, 0):
         if marker_counts != (1, 1) or current.index(END_MARKER) < current.index(MARKER):
@@ -186,7 +187,8 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
                 raise Conflict("Existing Muse AGENTS.md section differs; preserve its project-specific edits")
             changes["AGENTS.md"] = current[:start] + security.strip() + current[end:]
     else:
-        changes["AGENTS.md"] = current.rstrip() + ("\n\n" if current else "") + security
+        separator = ("\n" if current.endswith("\n") else "\n\n") if current else ""
+        changes["AGENTS.md"] = current + separator + security
     if codeowner is not None:
         changes.update(owners_change(root, codeowner, migrate_opencode))
     return changes
@@ -204,8 +206,8 @@ def apply(root: Path, changes: dict[str, str | None]) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix=".muse-install-", dir=target.parent)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(content)
+            with os.fdopen(descriptor, "wb") as file:
+                file.write(content.encode("utf-8"))
             if target.exists():
                 os.chmod(temporary, target.stat().st_mode & 0o777)
             else:

@@ -235,3 +235,44 @@ def test_changed_claude_install_refuses_update_without_writes(tmp_path, template
     with pytest.raises(installer.Conflict, match="differs"):
         installer.plan(tmp_path, "example-org")
     assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("generation", ["legacy", "previous", "current"])
+@pytest.mark.parametrize("kind", ["helper", "policy", "instructions"])
+def test_crlf_modified_generated_files_refuse_before_writes(tmp_path, templates, generation, kind):
+    if generation == "legacy":
+        legacy(tmp_path, fixes=False)
+    elif generation == "previous":
+        previous_managed(tmp_path, "muse-spark-1.3", False)
+    else:
+        installer.apply(tmp_path, installer.plan(tmp_path, "example-org"))
+    name = {"helper": ".github/scripts/muse_ci.py", "instructions": "AGENTS.md",
+            "policy": installer.OLD_POLICY if generation == "legacy" else installer.NEW_POLICY}[kind]
+    target = tmp_path / name
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(installer.Conflict, match="differs"):
+        installer.plan(tmp_path, "example-org", migrate_opencode=generation == "legacy")
+    assert before == {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_update_preserves_instruction_surroundings_byte_for_byte(tmp_path, templates):
+    previous_managed(tmp_path, "muse-spark-1.3", False)
+    target = tmp_path / "AGENTS.md"
+    previous = json.loads(installer.MANAGED.read_text())["AGENTS.muse.md"][0].strip().encode()
+    prefix, suffix = b"# Project\r\nTrailing spaces.  \r\n\r\n", b"\r\n\r\nKeep this.  \r\n"
+    target.write_bytes(prefix + previous + suffix)
+    changes = installer.plan(tmp_path, "example-org")
+    installer.apply(tmp_path, changes)
+    current = (templates / "AGENTS.muse.md").read_bytes().strip()
+    assert target.read_bytes() == prefix + current + suffix
+    assert installer.plan(tmp_path, "example-org") == {}
+
+
+def test_append_preserves_unmarked_instruction_bytes(tmp_path, templates):
+    target = tmp_path / "AGENTS.md"
+    original = b"# Project\r\nKeep trailing spaces.  \r\n\r\n"
+    target.write_bytes(original)
+    installer.apply(tmp_path, installer.plan(tmp_path, "example-org"))
+    assert target.read_bytes().startswith(original)
+    assert installer.plan(tmp_path, "example-org") == {}

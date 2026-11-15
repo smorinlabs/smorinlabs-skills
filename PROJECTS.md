@@ -2705,7 +2705,7 @@ Version 0.5.0 landed in #119 and its installed placement was verified. Pilot set
 landed in smorinlabs/lost-sessions#31; activation remains paused while five late
 review findings are repaired in 0.5.1 before live acceptance.
 
-The 0.5.1 focused Muse suite passes 204 tests. All three workflows pass actionlint;
+The 0.5.1 focused Muse suite passes 215 tests. All three workflows pass actionlint;
 generated manifests and name/whitespace checks pass. Real Claude CLI probes pass
 11 baseline, 6 symlink, and 6 data-fixture checks with fake credentials and a
 loopback-only endpoint. Direct fixture Read and file-targeted Grep work; directory
