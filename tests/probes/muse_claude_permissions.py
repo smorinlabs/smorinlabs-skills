@@ -20,7 +20,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 REPO = Path(__file__).resolve().parents[2]
 HELPER = REPO / "plugins/muse-github/skills/muse-github-setup/templates/.github/scripts/muse_ci.py"
 TEMPLATES = HELPER.parents[2]
-FAKE_SECRET = "FAKE_CREDENTIAL_PROBE_39c127"
+# Public synthetic marker used to check whether denied reads expose file contents.
+DENIED_READ_MARKER = "PUBLIC_DENIED_READ_MARKER_39c127"
 PROJECT_MARKER = "PROJECT_INSTRUCTIONS_PROBE_8e1b0"
 
 
@@ -57,11 +58,11 @@ def main():
         (root / "nested/CLAUDE.md").write_text(PROJECT_MARKER + "_NESTED\n")
         subprocess.run(["git", "-C", str(root), "add", "normal.txt"], check=True)
         with (root / ".git/config").open("a") as f:
-            f.write(f"\n[probe]\n    fake = {FAKE_SECRET}\n")
-        outside = base / "outside-secret.txt"
-        outside.write_text(FAKE_SECRET + "\n")
+            f.write(f"\n[probe]\n    fake = {DENIED_READ_MARKER}\n")
+        outside = base / "outside-marker.txt"
+        outside.write_text(DENIED_READ_MARKER + "\n")
         state = runtime / "state.json"
-        state.write_text(json.dumps({"fake": FAKE_SECRET}))
+        state.write_text(json.dumps({"fake": DENIED_READ_MARKER}))
         profile_dir = root / ".github/muse-ci"
         profile_dir.mkdir(parents=True)
         (profile_dir / "review-settings.json").write_bytes((TEMPLATES / ".github/muse-ci/review-settings.json").read_bytes())
@@ -71,8 +72,8 @@ def main():
         logs = runtime.parent / "github-ci-logs"
         logs.mkdir()
         (logs / "job.log").write_text("ALLOWED_CI_LOG_PROBE\n")
-        other_temp = runtime.parent / "other-secret.txt"
-        other_temp.write_text(FAKE_SECRET + "\n")
+        other_temp = runtime.parent / "other-marker.txt"
+        other_temp.write_text(DENIED_READ_MARKER + "\n")
         if args.symlinks:
             (root / "safe_alias").symlink_to(root / "nested", target_is_directory=True)
             (root / "outside_alias").symlink_to(base, target_is_directory=True)
@@ -99,7 +100,7 @@ def main():
             ("runtime_state_read", "Read", {"file_path": str(state)}),
             ("runtime_settings_read", "Read", {"file_path": str(settings)}),
             ("normal_search", "Grep", {"pattern": "NORMAL_TRACKED_PROBE", "path": str(root / "normal.txt")}),
-            ("git_search", "Grep", {"pattern": FAKE_SECRET, "path": str(root / ".git")}),
+            ("git_search", "Grep", {"pattern": DENIED_READ_MARKER, "path": str(root / ".git")}),
             ("ci_log_read", "Read", {"file_path": str(logs / "job.log")}),
             ("other_temp_read", "Read", {"file_path": str(other_temp)}),
             ("shell", "Bash", {"command": f"touch {marker}"}),
@@ -109,12 +110,12 @@ def main():
             calls = [
                 ("safe_link_read", "Read", {"file_path": str(root / "safe_alias/normal.txt")}),
                 ("safe_link_search", "Grep", {"pattern": "NORMAL_TRACKED_PROBE", "path": str(root / "safe_alias")}),
-                ("outside_link_read", "Read", {"file_path": str(root / "outside_alias/outside-secret.txt")}),
+                ("outside_link_read", "Read", {"file_path": str(root / "outside_alias/outside-marker.txt")}),
                 ("git_link_read", "Read", {"file_path": str(root / "git_alias/config")}),
                 ("runtime_link_read", "Read", {"file_path": str(root / "runtime_alias/state.json")}),
-                ("outside_link_search", "Grep", {"pattern": FAKE_SECRET, "path": str(root / "outside_alias/outside-secret.txt")}),
-                ("git_link_search", "Grep", {"pattern": FAKE_SECRET, "path": str(root / "git_alias")}),
-                ("runtime_link_search", "Grep", {"pattern": FAKE_SECRET, "path": str(root / "runtime_alias")}),
+                ("outside_link_search", "Grep", {"pattern": DENIED_READ_MARKER, "path": str(root / "outside_alias/outside-marker.txt")}),
+                ("git_link_search", "Grep", {"pattern": DENIED_READ_MARKER, "path": str(root / "git_alias")}),
+                ("runtime_link_search", "Grep", {"pattern": DENIED_READ_MARKER, "path": str(root / "runtime_alias")}),
             ]
         if args.web_probe:
             calls = [("discover", "ToolSearch", {"query": "select:WebFetch,WebSearch"})]
@@ -222,7 +223,7 @@ def main():
                                            for name in ("git_search",)),
             "shell_and_edit_unavailable": all(results.get("toolu_" + name, {}).get("is_error") is True
                                               for name in ("shell", "edit")),
-            "protected_values_not_returned": FAKE_SECRET not in json.dumps(results),
+            "protected_values_not_returned": DENIED_READ_MARKER not in json.dumps(results),
             "startup_isolated": PROJECT_MARKER not in payload_text and not marker.exists()
                                 and not any("probe_forbidden_mcp" in str(x) for x in tool_names),
             "normal_file_unchanged": (root / "normal.txt").read_text() == "NORMAL_TRACKED_PROBE_73f1\n",
@@ -235,7 +236,7 @@ def main():
                     ("outside_link_read", "git_link_read", "runtime_link_read")),
                 "protected_link_searches_denied": all(results.get("toolu_" + name, {}).get("is_error") is True for name in
                     ("outside_link_search", "git_link_search", "runtime_link_search")),
-                "protected_values_not_returned": FAKE_SECRET not in json.dumps(results),
+                "protected_values_not_returned": DENIED_READ_MARKER not in json.dumps(results),
                 "startup_isolated": PROJECT_MARKER not in payload_text and not marker.exists()
                     and not any("probe_forbidden_mcp" in str(x) for x in tool_names),
             }
