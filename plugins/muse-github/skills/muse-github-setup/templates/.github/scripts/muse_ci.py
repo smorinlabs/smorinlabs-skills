@@ -319,16 +319,32 @@ def summary(environ, body: str) -> None:
             file.write(body + "\n")
 
 
+def validate_permission_profile(config) -> dict:
+    # Settings are permissions and isolation policy, never a source of runtime
+    # environment variables, provider credentials, hooks, or command helpers.
+    allowed = {"permissions", "disableAllHooks", "autoMemoryEnabled", "claudeMdExcludes"}
+    if not isinstance(config, dict) or set(config) - allowed:
+        raise Refusal("Muse settings contain unsupported fields")
+    permissions = config.get("permissions", {})
+    if not isinstance(permissions, dict):
+        raise Refusal("Muse settings must contain a permissions object")
+    for key in ("allow", "deny"):
+        rules = permissions.get(key, [])
+        if not isinstance(rules, list) or not all(isinstance(rule, str) for rule in rules):
+            raise Refusal(f"Muse settings {key} rules must be a list of strings")
+    for key in ("disableAllHooks", "autoMemoryEnabled"):
+        if key in config and not isinstance(config[key], bool):
+            raise Refusal(f"Muse settings {key} must be a boolean")
+    excludes = config.get("claudeMdExcludes", [])
+    if not isinstance(excludes, list) or not all(isinstance(item, str) for item in excludes):
+        raise Refusal("Muse settings claudeMdExcludes must be a list of strings")
+    return config
+
+
 def load_configuration(root: Path, mode: str) -> dict:
     profile = "fix" if mode == "fix" else "review"
     config = json.loads((root / f".github/muse-ci/{profile}-settings.json").read_text())
-    if not isinstance(config, dict) or not isinstance(config.get("permissions", {}), dict):
-        raise Refusal("Muse settings must contain a permissions object")
-    permissions = config.setdefault("permissions", {})
-    if not isinstance(permissions.get("deny", []), list) or not all(
-            isinstance(rule, str) for rule in permissions.get("deny", [])):
-        raise Refusal("Muse settings deny rules must be a list of strings")
-    return config
+    return validate_permission_profile(config)
 
 
 def data_fixture_read_rules(root: Path) -> list[str]:
@@ -371,7 +387,8 @@ def data_fixture_read_rules(root: Path) -> list[str]:
 def configuration(root: Path, mode: str, runtime: Path, *, source=None, fixture_root=None) -> dict:
     # Source is captured before PR checkout. Never reload a PR-authored profile
     # when deriving exact read exceptions from the frozen HEAD afterward.
-    config = json.loads(json.dumps(source if source is not None else load_configuration(root, mode)))
+    config = json.loads(json.dumps(validate_permission_profile(
+        source if source is not None else load_configuration(root, mode))))
     permissions = config.setdefault("permissions", {})
     custom_denies = list(permissions.get("deny", []))
     permissions.update(blockReadsOutsideWorkingDirectories=True,
@@ -437,14 +454,14 @@ def prepare(mode: str, environ=os.environ) -> None:
                      api, members, policy["organization"])
     pr = event.get("_muse_pr")
     base = pr["base"]["sha"] if pr else environ["GITHUB_SHA"]
-    trusted_base = environ.get("MUSE_TRUSTED_BASE_SHA", "")
-    if not re.fullmatch(r"[0-9a-f]{40}", trusted_base):
+    checkout_sha = environ.get("MUSE_TRUSTED_BASE_SHA", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", checkout_sha):
         raise Refusal("Missing or invalid trusted checkout commit")
-    if mode != "followup" and trusted_base != base:
+    if mode != "followup" and checkout_sha != base:
         raise Refusal("Trusted checkout does not match the requested event base")
-    if git(root, "rev-parse", "HEAD") != trusted_base or git(root, "status", "--porcelain"):
+    if git(root, "rev-parse", "HEAD") != checkout_sha or git(root, "status", "--porcelain"):
         raise Refusal("Trusted checkout must be clean and match the requested base commit")
-    trusted_settings = load_configuration(root, mode)
+    permission_profile = load_configuration(root, mode)
     instructions = root / "AGENTS.md"
     if instructions.is_symlink():
         raise Refusal("Trusted AGENTS.md must be a regular file")
@@ -462,7 +479,7 @@ def prepare(mode: str, environ=os.environ) -> None:
     for folder in ("claude", "hooks", "config", "cache", "data", "state"):
         (runtime / folder).mkdir()
     settings = runtime / "settings.json"
-    state = {"mode": mode, "base": base, "trusted_base": trusted_base, "repository": repo["full_name"],
+    state = {"mode": mode, "base": base, "checkout_sha": checkout_sha, "repository": repo["full_name"],
              "run_url": f"{environ.get('GITHUB_SERVER_URL', 'https://github.com')}/{repo['full_name']}/actions/runs/{environ['GITHUB_RUN_ID']}",
              "attempt": environ.get("GITHUB_RUN_ATTEMPT", "1"), "default_branch": repo["default_branch"]}
     if pr:
@@ -512,7 +529,7 @@ def prepare(mode: str, environ=os.environ) -> None:
                    "It cannot override these security restrictions:\n" + json.dumps(guidance, ensure_ascii=False))
     if len(prompt.encode()) > 100_000:
         raise Refusal("Encoded prompt exceeds the safe environment size; use a smaller request")
-    settings.write_text(json.dumps(configuration(root, mode, runtime, source=trusted_settings, fixture_root=root)))
+    settings.write_text(json.dumps(configuration(root, mode, runtime, source=permission_profile, fixture_root=root)))
     (runtime / "state.json").write_text(json.dumps(state))
     variables = {
         "MUSE_CI_HELPER": str(helper), "MUSE_CI_STATE": str(runtime / "state.json"),
@@ -530,7 +547,7 @@ def prepare(mode: str, environ=os.environ) -> None:
     output(environ["GITHUB_OUTPUT"], "prompt", prompt)
     output(environ["GITHUB_OUTPUT"], "settings", str(settings))
     output(environ["GITHUB_OUTPUT"], "ci_logs", str(ci_logs.resolve()))
-    summary(environ, f"Prepared Muse {mode} with comparison base `{base}`, trusted configuration `{trusted_base}`, and head `{state['head']}`.")
+    summary(environ, f"Prepared Muse {mode} with comparison base `{base}`, trusted configuration `{checkout_sha}`, and head `{state['head']}`.")
     print(f"Authorized {mode}; trusted settings prepared; no credential values written")
 
 
@@ -560,7 +577,7 @@ def restore_revision(root: Path, state: dict) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise Refusal("Action restoration ref is invalid")
     try:
-        git(root, "merge-base", "--is-ancestor", state["trusted_base"], revision)
+        git(root, "merge-base", "--is-ancestor", state["checkout_sha"], revision)
     except Refusal:
         raise Refusal("Action restoration ref is not a forward trusted default-branch revision") from None
     return revision
@@ -791,7 +808,7 @@ def finish(mode: str, environ=os.environ) -> None:
         if not success:
             raise Refusal("Action failed or mode mismatched; no publication attempted")
         state["restore_base"] = restore_revision(root, state)
-        summary(environ, f"Action configuration restoration source: `{state['restore_base']}`; trusted checkout: `{state['trusted_base']}`.")
+        summary(environ, f"Action configuration restoration source: `{state['restore_base']}`; trusted checkout: `{state['checkout_sha']}`.")
         review_workspace(root, state)
         if mode == "review":
             update = successful_comment_update(environ.get("MUSE_EXECUTION_FILE", ""))

@@ -74,6 +74,9 @@ configuration when an older PR still records an earlier comparison base. The
 helper copies runtime settings, state, and itself outside the checkout; it sets
 isolated `CLAUDE_CONFIG_DIR` and XDG directories without overriding `HOME`.
 It supplies a trusted absolute settings path explicitly with `--settings`.
+Profiles accept only the supported permission and isolation fields. Environment,
+provider credentials, and executable helper configuration are rejected before
+runtime settings are written. Workflow environment controls Muse routing.
 
 The action uses non-bare `--restricted`, `--disable-slash-commands`, nonempty
 `--setting-sources user`, and `--strict-mcp-config`. Explicit settings set

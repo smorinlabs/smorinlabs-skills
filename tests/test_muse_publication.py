@@ -25,7 +25,7 @@ def comment(identifier=20, inline=False, body=None, root=7):
 
 def state(inline=False):
     result = {"repository": "org/repo", "number": 5, "head": "a" * 40,
-              "comment_ids": [1], "run_url": RUN, "default_branch": "main", "trusted_base": "b" * 40}
+              "comment_ids": [1], "run_url": RUN, "default_branch": "main", "checkout_sha": "b" * 40}
     if inline:
         result.update(thread_root_id=7, review_comment_ids=[7, 8])
     return result

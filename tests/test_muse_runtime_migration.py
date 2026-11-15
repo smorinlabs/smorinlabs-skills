@@ -289,7 +289,7 @@ def test_finish_followup_rejects_unproven_response_and_stale_head(tmp_path, monk
     head = "a" * 40
     state = tmp_path / "state.json"
     state.write_text(json.dumps({"mode": "followup", "repository": "org/repo", "number": 1, "head": head,
-                                 "default_branch": "main", "trusted_base": "b" * 40}))
+                                 "default_branch": "main", "checkout_sha": "b" * 40}))
     env = {"GITHUB_WORKSPACE": str(tmp_path), "MUSE_CI_STATE": str(state), "MUSE_ACTION_OUTCOME": "success",
            "MUSE_ACTION_CONCLUSION": "success",
            "GH_TOKEN": "fake"}

@@ -145,7 +145,7 @@ def test_followup_can_compare_old_pr_base_using_new_trusted_checkout(tmp_path, m
     ci.prepare("followup", env)
     variables, output = outputs(envfile), outputs(outfile)
     state = json.loads(Path(variables["MUSE_CI_STATE"]).read_text())
-    assert state["base"] == comparison_base and state["trusted_base"] == trusted
+    assert state["base"] == comparison_base and state["checkout_sha"] == trusted
     assert "Trusted latest guidance" in output["prompt"] and "PR change" in output["prompt"]
     assert git(root, "rev-parse", "HEAD") == head
 
@@ -177,7 +177,7 @@ def test_action_restoration_accepts_forward_main_only_and_rejects_unrelated_writ
     snapshot.parent.mkdir(parents=True)
     snapshot.write_text("pr version\n")
     config.write_text("forward version\n")
-    state = {"base": base, "trusted_base": trusted, "head": head, "default_branch": "main"}
+    state = {"base": base, "checkout_sha": trusted, "head": head, "default_branch": "main"}
     state["restore_base"] = ci.restore_revision(tmp_path, state)
     assert state["restore_base"] == forward
     ci.review_workspace(tmp_path, state)
@@ -252,3 +252,34 @@ def test_failed_review_at_same_head_never_publishes(tmp_path, monkeypatch):
                              "GH_TOKEN": "fake", "MUSE_ACTION_OUTCOME": "failure",
                              "MUSE_ACTION_CONCLUSION": "failure"})
     assert calls == [("GET", "repos/org/repo/pulls/5")]
+
+
+@pytest.mark.parametrize("extra", [
+    {"env": {"ANTHROPIC_AUTH_TOKEN": "public-placeholder"}},
+    {"apiKeyHelper": "echo public-placeholder"},
+    {"unknownSetting": True},
+])
+def test_permission_profiles_reject_unsupported_fields_in_both_entry_points(tmp_path, extra):
+    profile = {"permissions": {"deny": []}, **extra}
+    settings = tmp_path / ".github/muse-ci/review-settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps(profile))
+    with pytest.raises(ci.Refusal, match="unsupported fields"):
+        ci.load_configuration(tmp_path, "review")
+    with pytest.raises(ci.Refusal, match="unsupported fields"):
+        ci.configuration(tmp_path, "review", tmp_path / "runtime", source=profile)
+
+
+def test_permission_profile_preserves_custom_rules_and_isolation_fields(tmp_path):
+    source = {"permissions": {"allow": ["Read", "Grep"], "deny": ["Read(private.txt)"]},
+              "disableAllHooks": True, "autoMemoryEnabled": False, "claudeMdExcludes": ["**"]}
+    settings = tmp_path / ".github/muse-ci/review-settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps(source))
+    assert ci.load_configuration(tmp_path, "review") == source
+    result = ci.configuration(tmp_path, "review", tmp_path / "runtime", source=source)
+    assert result["permissions"]["allow"] == ["Read", "Grep"]
+    assert result["permissions"]["deny"][-1] == "Read(private.txt)"
+    assert result["disableAllHooks"] is True and result["autoMemoryEnabled"] is False
+    assert result["claudeMdExcludes"] == ["**"]
+    assert source["permissions"]["deny"] == ["Read(private.txt)"]
