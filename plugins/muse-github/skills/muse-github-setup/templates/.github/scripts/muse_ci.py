@@ -118,10 +118,22 @@ def protected(path: str) -> bool:
     )
 
 
+DATA_SUFFIXES = (".json", ".yaml", ".yml", ".toml", ".snap")
+
+
+def dotenv(name: str) -> bool:
+    # .env, .env.local, prod.env, prod.env.local; not data fixtures such as x.env.json.
+    return (
+        name.startswith(".env")
+        or name.endswith(".env")
+        or (".env." in name and not name.endswith(DATA_SUFFIXES))
+    )
+
+
 def sensitive(path: str) -> bool:
     name = PurePosixPath(path).name.lower()
     return (
-        ".env" in name
+        dotenv(name)
         or name.endswith((".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"))
         or name in {
             ".npmrc", ".pypirc", ".netrc", ".git-credentials", "credentials", "credentials.json",

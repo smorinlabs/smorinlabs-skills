@@ -80,7 +80,8 @@ rules also apply to its default agent. The installer preserves root
 
 Review input is a complete textual diff limited to 60,000 bytes, not a
 silently truncated diff. Credential-like changes are refused for human review.
-The case-insensitive filename policy includes `.env*`, key/certificate stores,
+The case-insensitive filename policy includes dotenv names (`.env`, `.env.*`,
+`*.env`, and `*.env.*` except JSON/YAML/TOML/snapshot data files), key/certificate stores,
 `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials`, `credentials.json`,
 and conventional SSH private-key names. Binary changes and context outside the diff
 need human inspection. The model cannot load PR instruction files as agent
@@ -104,9 +105,9 @@ The fix profile edits regular project files. Preparation refuses symlinks,
 submodules, and any tracked credential-like file before the model step. This
 includes nonsecret example files with those names: the starting policy is
 deliberately conservative. Before activation, inspect the target repository's
-actual secret-file conventions and extend the helper's `sensitive()` predicate
-for additional names. Filename rules cannot identify secrets embedded in
-arbitrarily named source files; inspect that separately. Do not activate a
+actual secret-file conventions against the helper's `sensitive()` predicate.
+Changes to it belong in this skill's template, not the installed copy.
+Filename rules cannot identify secrets embedded in arbitrarily named source files; inspect that separately. Do not activate a
 manual fix workflow with unreviewed secret paths. It starts from the trusted
 default branch, disables hooks, formatters and language servers, and leaves
 test execution to ordinary PR CI. Protected-path tool permissions are the
