@@ -1,5 +1,57 @@
 # Release Notes
 
+## v0.34.0 — 2026-11-14
+
+### Added
+
+- `session` 0.17.1 -> 0.18.0: new skill `session-move`. It moves a Rex window
+  from one Rex session to another on the same computer. Rex cannot move a
+  window between sessions, so the skill recreates it: the same agent (Claude
+  Code, Codex, or Muse), the same conversation resumed by ID, the same
+  working directory, and the same window name. A waiting handoff in the new
+  window resumes the conversation only after the old window has closed and
+  its agent has exited, so two copies never write one transcript. The bundled
+  `scripts/session-move` helper plans, arms, releases, and aborts the move,
+  and refuses windows it cannot move safely (#113).
+- `session` 0.14.0 -> 0.15.0: `session-recap` and `session-loose-ends` end
+  with a session close-out: done versus open for this session's main work and
+  small items, and a verdict to close, close out small items, or continue
+  (#104).
+- `session` 0.15.0 -> 0.16.0: `session-status` ends with the same close
+  verdict in a compact form, built from the plan and the conversation only
+  (#106).
+
+### Changed
+
+- `session` 0.16.0 -> 0.17.0: close-out small items read as self-contained
+  blocks: what the artifact is and whether anything tracks it, and a
+  recommended answer (#107).
+- `muse-github` 0.2.0 -> 0.3.0: Muse review workflows mint a short-lived
+  members-read App token instead of using a personal access token, with setup
+  guidance from the `lost-sessions` install (#108).
+- `muse-github` 0.3.0 -> 0.4.0: `install.py` requires `--codeowner` or
+  `--no-codeowner` and owns a marked CODEOWNERS block. This breaks direct
+  callers that passed neither flag (#109).
+
+### Fixed
+
+- `session` 0.17.0 -> 0.17.1: `session-spinoff` tabs fall back to a shell
+  prompt when the agent exits, instead of closing (#111).
+- `session` 0.18.0 -> 0.18.1: `session-move` self-moves under Codex find the
+  caller's tab by `CODEX_THREAD_ID`, because Codex commands inherit another
+  tab's `REX_SESSION` and `REX_BLOCK`. A self-move whose Rex pane runs another
+  agent or conversation is refused. Codex and Muse moves wait for the agent's
+  own turn-end record, because Muse's transcript stays quiet for up to 24 s
+  while it reviews its answer (#116).
+- `session`: the launch wrapper runs under a Bourne-family shell (`/bin/zsh`
+  when `$SHELL` is fish, tcsh, or nushell), and `spinoff-plan` recognises
+  Muse's `muse-bin-<version>` process (#113).
+- `muse-github`: `install.py` prints the rendered model, and the setup docs
+  close the gaps from the `bitrot-sanitation-skill` install (#114).
+- `muse-github`: fix preparation matches dotenv file names, not data fixtures
+  such as `*.env.json`. A real secret saved under such a name is no longer
+  caught by its name (#115).
+
 ## v0.33.0 — 2026-11-13
 
 ### Added
