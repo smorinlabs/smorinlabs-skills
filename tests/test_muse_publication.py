@@ -25,7 +25,7 @@ def comment(identifier=20, inline=False, body=None, root=7):
 
 def state(inline=False):
     result = {"repository": "org/repo", "number": 5, "head": "a" * 40,
-              "comment_ids": [1], "run_url": RUN}
+              "comment_ids": [1], "run_url": RUN, "default_branch": "main", "checkout_sha": "b" * 40}
     if inline:
         result.update(thread_root_id=7, review_comment_ids=[7, 8])
     return result
@@ -197,9 +197,10 @@ def test_finish_cannot_accept_zero_followup_publication(tmp_path, monkeypatch):
     log.write_text(json.dumps([{"type": "result", "subtype": "success", "is_error": False}]))
     env = {"GITHUB_WORKSPACE": str(tmp_path), "MUSE_CI_STATE": str(recorded), "MUSE_ACTION_OUTCOME": "success",
            "MUSE_ACTION_CONCLUSION": "success", "MUSE_EXECUTION_FILE": str(log), "GH_TOKEN": "fake"}
-    api = API(objects={"repos/org/repo/pulls/5": {"head": {"sha": "a" * 40}}})
+    api = API(objects={"repos/org/repo/pulls/5": {"head": {"sha": "a" * 40}, "base": {"ref": "main"}}})
     monkeypatch.setattr(ci, "GitHub", lambda token: api)
     monkeypatch.setattr(ci, "review_workspace", lambda *unused: None)
+    monkeypatch.setattr(ci, "restore_revision", lambda *unused: "b" * 40)
     with pytest.raises(ci.Refusal, match="No successful"):
         ci.finish("followup", env)
     assert not any(call[0] in ("POST", "PATCH", "DELETE") for call in api.calls)
@@ -231,6 +232,7 @@ def test_prepare_exposes_only_the_ci_log_directory_outside_checkout(tmp_path, mo
     monkeypatch.setattr(ci, "GitHub", lambda token: api)
     ci.prepare("fix", {"GITHUB_WORKSPACE": str(root), "GITHUB_EVENT_PATH": str(event),
         "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REPOSITORY": "org/repo", "GITHUB_SHA": base,
+        "MUSE_TRUSTED_BASE_SHA": base,
         "GITHUB_ACTOR": "member", "MUSE_TRIGGERING_ACTOR": "member", "RUNNER_TEMP": str(runtime),
         "GITHUB_ENV": str(envfile), "GITHUB_OUTPUT": str(output), "GITHUB_RUN_ID": "10", "GH_TOKEN": "fake"})
     fields = {}

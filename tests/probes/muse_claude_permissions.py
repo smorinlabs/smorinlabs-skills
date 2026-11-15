@@ -40,9 +40,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--claude", default=shutil.which("claude"), help="Path to the installed Claude CLI")
     parser.add_argument("--json-output", type=Path)
-    parser.add_argument("--discover", action="store_true", help="Diagnostic: ask ToolSearch for deferred read-only tools")
-    parser.add_argument("--web-probe", action="store_true", help="Diagnostic: request deferred web tools with only loopback reachable")
-    parser.add_argument("--symlinks", action="store_true", help="Probe safe and protected directory symlinks")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--discover", action="store_true", help="Diagnostic: ask ToolSearch for deferred read-only tools")
+    mode.add_argument("--web-probe", action="store_true", help="Diagnostic: request deferred web tools with only loopback reachable")
+    mode.add_argument("--symlinks", action="store_true", help="Probe safe and protected directory symlinks")
+    mode.add_argument("--data-fixtures", action="store_true", help="Probe exact tracked data-fixture exceptions")
     args = parser.parse_args()
     if not args.claude:
         parser.error("Claude CLI not found; pass --claude")
@@ -56,6 +58,13 @@ def main():
         (root / "nested").mkdir()
         (root / "nested/normal.txt").write_text("NORMAL_TRACKED_PROBE_73f1\n")
         (root / "nested/CLAUDE.md").write_text(PROJECT_MARKER + "_NESTED\n")
+        if args.data_fixtures:
+            fixture_dir = root / "tests/fixtures"
+            fixture_dir.mkdir(parents=True)
+            for name in ("x.env.json", "x[1].env.json", "blocked.env.json", "x.env.yaml", "x.env.local", ".env.local"):
+                (fixture_dir / name).write_text("PUBLIC_FIXTURE_MARKER\n")
+            subprocess.run(["git", "-C", str(root), "add", "tests/fixtures/x.env.json",
+                            ":(literal)tests/fixtures/x[1].env.json", "tests/fixtures/blocked.env.json"], check=True)
         subprocess.run(["git", "-C", str(root), "add", "normal.txt"], check=True)
         with (root / ".git/config").open("a") as f:
             f.write(f"\n[probe]\n    fake = {DENIED_READ_MARKER}\n")
@@ -67,7 +76,13 @@ def main():
         profile_dir.mkdir(parents=True)
         (profile_dir / "review-settings.json").write_bytes((TEMPLATES / ".github/muse-ci/review-settings.json").read_bytes())
         settings = runtime / "settings.json"
-        profile = load_helper().configuration(root, "review", runtime)
+        helper = load_helper()
+        if args.data_fixtures:
+            source = json.loads((profile_dir / "review-settings.json").read_text())
+            source["permissions"]["deny"].append("Read(**/blocked*)")
+            profile = helper.configuration(root, "review", runtime, source=source, fixture_root=root)
+        else:
+            profile = helper.configuration(root, "review", runtime)
         settings.write_text(json.dumps(profile))
         logs = runtime.parent / "github-ci-logs"
         logs.mkdir()
@@ -106,6 +121,17 @@ def main():
             ("shell", "Bash", {"command": f"touch {marker}"}),
             ("edit", "Edit", {"file_path": str(root / "normal.txt"), "old_string": "NORMAL_TRACKED", "new_string": "MODIFIED"}),
         ]
+        if args.data_fixtures:
+            calls = [
+                ("fixture_read", "Read", {"file_path": str(fixture_dir / "x.env.json")}),
+                ("fixture_search", "Grep", {"pattern": "PUBLIC_FIXTURE_MARKER", "path": str(fixture_dir / "x.env.json")}),
+                ("fixture_escaped_read", "Read", {"file_path": str(fixture_dir / "x[1].env.json")}),
+                ("fixture_untracked_read", "Read", {"file_path": str(fixture_dir / "x.env.yaml")}),
+                ("fixture_custom_denied", "Read", {"file_path": str(fixture_dir / "blocked.env.json")}),
+                ("fixture_dotenv_denied", "Read", {"file_path": str(fixture_dir / ".env.local")}),
+                ("fixture_named_env_denied", "Read", {"file_path": str(fixture_dir / "x.env.local")}),
+                ("fixture_parent_search", "Grep", {"pattern": "PUBLIC_FIXTURE_MARKER", "path": str(fixture_dir)}),
+            ]
         if args.symlinks:
             calls = [
                 ("safe_link_read", "Read", {"file_path": str(root / "safe_alias/normal.txt")}),
@@ -228,6 +254,15 @@ def main():
                                 and not any("probe_forbidden_mcp" in str(x) for x in tool_names),
             "normal_file_unchanged": (root / "normal.txt").read_text() == "NORMAL_TRACKED_PROBE_73f1\n",
         }
+        if args.data_fixtures:
+            checks = {
+                "tracked_fixture_read": "PUBLIC_FIXTURE_MARKER" in str(results.get("toolu_fixture_read", {})),
+                "tracked_fixture_search": "x.env.json" in str(results.get("toolu_fixture_search", {})) and not results.get("toolu_fixture_search", {}).get("is_error", False),
+                "escaped_fixture_read": "PUBLIC_FIXTURE_MARKER" in str(results.get("toolu_fixture_escaped_read", {})),
+                "untracked_and_custom_denied": all(results.get("toolu_" + name, {}).get("is_error") is True for name in ("fixture_untracked_read", "fixture_custom_denied")),
+                "credential_names_denied": all(results.get("toolu_" + name, {}).get("is_error") is True for name in ("fixture_dotenv_denied", "fixture_named_env_denied")),
+                "startup_isolated": PROJECT_MARKER not in payload_text and not marker.exists(),
+            }
         if args.symlinks:
             checks = {
                 "safe_link_read": "NORMAL_TRACKED_PROBE_73f1" in str(results.get("toolu_safe_link_read", {})),

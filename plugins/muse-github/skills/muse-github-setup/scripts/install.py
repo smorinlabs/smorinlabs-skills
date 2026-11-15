@@ -14,6 +14,7 @@ import tempfile
 SKILL = Path(__file__).resolve().parents[1]
 TEMPLATES = SKILL / "templates"
 LEGACY = SKILL / "references/legacy/snapshots.json"
+MANAGED = SKILL / "references/managed/snapshots.json"
 MARKER = "<!-- muse-github-setup:security:start -->"
 END_MARKER = "<!-- muse-github-setup:security:end -->"
 OWNERS_MARKER = "# Muse CI security-sensitive configuration (muse-github-setup)."
@@ -121,6 +122,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
     if model is not None and model not in MODELS:
         raise Conflict(f"model must be one of: {', '.join(MODELS)}")
     snapshots = json.loads(LEGACY.read_text())
+    previous = json.loads(MANAGED.read_text())
     old_names = [name for name in snapshots if name != "AGENTS.muse.md"]
     # The helper has the same destination in both generations; it alone is not proof of a legacy install.
     legacy_present = any(destination(root, n).exists() for n in old_names if n != ".github/scripts/muse_ci.py")
@@ -143,7 +145,7 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
             target = destination(root, name)
             if not target.exists():
                 continue
-            current = target.read_text()
+            current = target.read_bytes().decode("utf-8")
             # Legacy files are validated against their original model, not the selected replacement.
             if not any(current == render(body, organization, legacy_model) for body in snapshots[name]):
                 raise Conflict(f"Existing legacy {name} differs; preserve it and prepare a reviewed reconciliation")
@@ -153,15 +155,21 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
     for name in TEMPLATE_FILES:
         if not with_fixes and name in OPTIONAL:
             continue
-        body = render((TEMPLATES / name).read_text(), organization, selected)
+        body = render((TEMPLATES / name).read_bytes().decode("utf-8"), organization, selected)
         target = destination(root, name)
-        if target.exists() and target.read_text() != body and name not in recognized:
-            raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
-        if not target.exists() or target.read_text() != body:
+        current = target.read_bytes().decode("utf-8") if target.exists() else None
+        if current is not None and current != body and name not in recognized:
+            known = installed_model is not None and any(
+                current == render(old, organization, installed_model)
+                for old in previous.get(name, [])
+            )
+            if not known:
+                raise Conflict(f"Existing {name} differs; preserve it and prepare a reviewed update")
+        if current != body:
             changes[name] = body
     instructions = destination(root, "AGENTS.md")
-    current = instructions.read_text() if instructions.exists() else ""
-    security = (TEMPLATES / "AGENTS.muse.md").read_text()
+    current = instructions.read_bytes().decode("utf-8") if instructions.exists() else ""
+    security = (TEMPLATES / "AGENTS.muse.md").read_bytes().decode("utf-8")
     marker_counts = current.count(MARKER), current.count(END_MARKER)
     if marker_counts != (0, 0):
         if marker_counts != (1, 1) or current.index(END_MARKER) < current.index(MARKER):
@@ -170,11 +178,17 @@ def plan(root: Path, organization: str, with_fixes: bool = False, model: str | N
         end = current.index(END_MARKER, start) + len(END_MARKER)
         existing_block = current[start:end]
         if existing_block != security.strip():
-            if not migrate_opencode or not any(existing_block == old.strip() for old in snapshots["AGENTS.muse.md"]):
+            known_legacy = migrate_opencode and any(existing_block == old.strip() for old in snapshots["AGENTS.muse.md"])
+            known_managed = installed_model is not None and any(
+                existing_block == render(old, organization, installed_model).strip()
+                for old in previous.get("AGENTS.muse.md", [])
+            )
+            if not (known_legacy or known_managed):
                 raise Conflict("Existing Muse AGENTS.md section differs; preserve its project-specific edits")
             changes["AGENTS.md"] = current[:start] + security.strip() + current[end:]
     else:
-        changes["AGENTS.md"] = current.rstrip() + ("\n\n" if current else "") + security
+        separator = ("\n" if current.endswith("\n") else "\n\n") if current else ""
+        changes["AGENTS.md"] = current + separator + security
     if codeowner is not None:
         changes.update(owners_change(root, codeowner, migrate_opencode))
     return changes
@@ -192,8 +206,8 @@ def apply(root: Path, changes: dict[str, str | None]) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix=".muse-install-", dir=target.parent)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(content)
+            with os.fdopen(descriptor, "wb") as file:
+                file.write(content.encode("utf-8"))
             if target.exists():
                 os.chmod(temporary, target.stat().st_mode & 0o777)
             else:

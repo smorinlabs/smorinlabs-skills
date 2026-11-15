@@ -68,9 +68,15 @@ Anthropic. The false setting publishes inline findings immediately.
 ## Configuration and execution isolation
 
 Configuration and the helper come from the trusted base/default revision. The
+helper verifies the exact commit reported by the checkout step separately from
+the PR comparison base. Follow-ups can therefore use current default-branch
+configuration when an older PR still records an earlier comparison base. The
 helper copies runtime settings, state, and itself outside the checkout; it sets
 isolated `CLAUDE_CONFIG_DIR` and XDG directories without overriding `HOME`.
 It supplies a trusted absolute settings path explicitly with `--settings`.
+Profiles accept only the supported permission and isolation fields. Environment,
+provider credentials, and executable helper configuration are rejected before
+runtime settings are written. Workflow environment controls Muse routing.
 
 The action uses non-bare `--restricted`, `--disable-slash-commands`, nonempty
 `--setting-sources user`, and `--strict-mcp-config`. Explicit settings set
@@ -94,6 +100,15 @@ do not carry forward a narrower inventory without checking it.
 
 Generated settings block file-tool reads and writes outside working directories,
 deny credential-like filenames, and deny Git/runtime credential locations.
+Exact tracked regular data fixtures such as `tests/fixtures/x.env.json` receive
+escaped read exceptions after checkout validation. These do not grant edits or
+allow `.env.local` and other credential-like files. Supplied trusted deny rules
+remain effective. Filename classification does not establish that a file's
+contents are safe to disclose.
+CLI 2.1.325 permits direct Read and file-targeted Grep for these exact exceptions;
+directory-wide Grep can still omit them. Use the known path from the PR diff
+when inspecting such a fixture. This runtime limitation does not remove the
+read-only tools from the model.
 The action configures Git authentication, so `persist-credentials: false` alone
 is insufficient. The helper rejects submodules and credential-like files before model use.
 Manual fixes reject every symlink. Reviews and follow-ups allow an existing
@@ -139,11 +154,13 @@ Meta endpoint or that a mock proves external web success. The main model and
 all model aliases remain routed to Muse. Record actual provider/tool failures
 rather than silently disabling the requested read-only capability.
 
-The action restores sensitive startup files from the PR base and saves PR
-variants under `.claude-pr/`. Those variants are untrusted review data. Final
-workspace verification accounts for the known restoration; it must still reject
-unexpected model changes. Configuration restoration is an additional defense,
-not a substitute for suppressed discovery.
+The action fetches the current base branch when restoring sensitive startup
+files and saves PR variants under `.claude-pr/`. Those variants are untrusted
+review data. Final verification records the action-fetched restoration revision,
+requires it to descend from the trusted checkout, and compares restored bytes
+against that revision. The PR comparison base may be older. Unrelated workspace
+changes and rewritten base history are still rejected. Configuration restoration
+is an additional defense, not a substitute for suppressed discovery.
 
 ## Progress, summaries, and stale findings
 
@@ -177,6 +194,13 @@ The helper records the reviewed SHA and checks the live head before finalization
 Every inline finding must name that recorded SHA. The upstream inline tool can
 otherwise default to the latest head. Concurrency cancels older PR runs, but
 findings already published may remain after cancellation or a stale-head failure.
+Follow-ups use a separate concurrency group for each triggering comment. Distinct
+comments may run concurrently; a newer request does not replace an older pending
+request, and an automatic review does not cancel a follow-up. Each response is
+correlated with its own run and comment IDs before placement or cleanup.
+When finalization runs after an unsuccessful action, it attempts to report an
+advanced head before refusing publication. A hard cancellation can prevent the
+finalizer from running; no stale diagnostic is guaranteed in that case.
 The recorded run summary is the authoritative input record. Never claim atomic
 publication against the latest commit or automatic retraction of stale findings.
 
