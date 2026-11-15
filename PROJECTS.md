@@ -2683,7 +2683,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       the variables decide. Bump session 0.18.1 → 0.18.2.
 - [ ] [P73-T16] Release session 0.18.2
 
-## [~] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.3)
+## [x] Project P74: Muse reviews through the official Claude Code Action (muse-github 0.5.3)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
 with the official Anthropic Action while preserving Meta Muse routing. Add inline
 findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
@@ -2695,46 +2695,27 @@ eligible organization repositories in small verified batches.
 - [x] [P74-T02] Implement installer migration, trusted workflows/runtime, broad read-only tools, and regression tests.
 - [x] [P74-T03] Refresh skill instructions, security/acceptance/provenance/secrets references, docs page, README row, plugin version, and manifests.
 - [x] [P74-T04] Validate local behavior, workflow syntax, skill loading, and independent implementation review; resolve findings before the pilot.
-- [x] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement (0.5.0 in #119).
-- [x] [P74-T08] Repair late pilot review findings, validate managed-version updates, and land 0.5.1 before live acceptance (#120; consumer repair smorinlabs/lost-sessions#32).
-- [x] [P74-T09] Add sanitized read-only tool execution counts and repair the pilot's turn-budget exhaustion before retrying live acceptance (#121; consumer smorinlabs/lost-sessions#35).
-- [ ] [P74-T10] Repair duplicate inline replies and missing final publication; record observed native WebSearch incompatibility; land and repeat affected pilot checks.
-- [ ] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on one live pilot.
-- [ ] [P74-T07] Migrate remaining eligible repositories incrementally, recording exact installation and live-verification evidence.
+- [x] [P74-T05] Land the upgraded skill through a PR and refresh its existing installed placement (0.5.0 in #119, final implementation 0.5.3 in #122).
+- [x] [P74-T08] Repair late pilot review findings and validate managed-version updates (#120; consumer smorinlabs/lost-sessions#32).
+- [x] [P74-T09] Add sanitized read-only tool execution counts and repair turn-budget exhaustion (#121; consumer smorinlabs/lost-sessions#35).
+- [x] [P74-T10] Repair duplicate inline replies and missing final publication, document native WebSearch incompatibility, and repeat affected pilot checks (#122; consumer smorinlabs/lost-sessions#36).
+- [x] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on the live pilot (smorinlabs/lost-sessions#34, closed unmerged).
+- [x] [P74-T07] Migrate the remaining eligible repository in a batch of one and verify review plus inline follow-up (smorinlabs/bitrot-sanitation-skill#5; test #6 closed unmerged).
 
 ### Validation status
-Versions 0.5.0 and 0.5.1 landed in #119 and #120; the installed placement was
-verified. Pilot setup and repair landed in smorinlabs/lost-sessions#31 and #32.
-All five findings were resolved with evidence, policies were read back, and the
-pilot's original enabled state was restored. Live acceptance is pending.
+Version 0.5.3 landed in #122 and its installed source placement was verified.
+The source CI suite passed 1,587 tests with 2 skips; the focused Muse suite passed
+286 tests. All three workflow templates passed actionlint, and Claude Code,
+Codex, and Muse deep skill loads passed. Two known static metadata warnings remain.
 
-The 0.5.1 focused Muse suite passes 215 tests. All three workflows pass actionlint;
-generated manifests and name/whitespace checks pass. Real Claude CLI probes pass
-11 baseline, 6 symlink, and 6 data-fixture checks with fake credentials and a
-loopback-only endpoint. Direct fixture Read and file-targeted Grep work; directory
-Grep can still omit exempted fixtures. These probes do not prove live Muse access.
-Known 0.5.0 output upgrades with 4 previewed/applied changes and zero on repeat,
-preserving the standard model, optional fixes, and unrelated configuration.
-Claude Code, Codex, and Muse deep skill loads pass. Generated manifest metadata
-and Muse advisory allowed-tools metadata retain non-blocking static warnings.
-The first live attempt in smorinlabs/lost-sessions#34 posted the correct inline
-finding and visible progress, then exhausted its 12-turn budget before completing
-the summary. The failed run is 43695466125; this does not pass live acceptance.
-Version 0.5.2 adds sanitized tool execution counts, a bounded 24-turn review and
-follow-up budget, and guidance against placeholder comments for tool discovery.
-Its 246 focused tests, all three workflow lint checks, generated manifests, and
-name/whitespace checks pass. Exact 0.5.1 output upgrades with 3 changes and zero
-on repeat, retaining the model, optional fixes, and unrelated configuration.
-Version 0.5.2 landed in #121 and its pilot update in smorinlabs/lost-sessions#35.
-Automatic inline review and summary completion passed. Two independent top-level
-follow-ups passed with overlapping execution. WebFetch passed; native WebSearch
-was permitted but Meta rejected its `max_uses` field. An inline follow-up answered
-in the correct discussion but also created an unwanted separate answer thread.
-Version 0.5.3 restricts only inline follow-up publication to its existing response,
-preserving read-only tools and new findings from other review entry points.
-It also publishes a successful final SDK response when no updater was attempted,
-with strict comment identity and readback checks; failed updater attempts still
-fail. All 286 focused tests, three workflow lint checks, manifest/name/whitespace
-checks, and three harness load checks pass. An exact 0.5.2 installation upgrades
-with one helper change and zero changes on repeat. Source landing, affected live
-acceptance, and rollout remain pending.
+Both identified consumers are installed, activated, and live-verified. The
+final inventory refreshed all 60 accessible default-branch heads and covered
+239 workflow files, with no deprecated Action references remaining. Three manual
+OpenCode CLI wrappers remain outside this Action migration. Existing model choices,
+credential scope, unrelated configuration, and separate repository work were preserved.
+
+[Validation evidence](docs/skills/muse-github-setup-validation.md) records exact
+commits, runs, comments, failures, repairs, review-service availability, and rollback.
+WebFetch worked; native WebSearch remains permitted but Meta rejects the runtime's
+`max_uses` field. Read-only tools remain available; code edits require the separate
+optional fix workflow, which was not enabled on either migrated consumer.
