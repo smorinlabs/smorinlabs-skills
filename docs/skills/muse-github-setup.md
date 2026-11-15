@@ -125,8 +125,8 @@ explains preview/apply, rollback, credentials, policy readback and required evid
 
 ## Validation and rollout
 
-Migration validation is pending until recorded against the edited source and
-actual pilot. Local installer/helper tests, workflow lint, manifests and skill
+Future skill changes require validation against the edited source and an actual
+pilot. Local installer/helper tests, workflow lint, manifests and skill
 loading establish Gate A. One pilot must then demonstrate actual inline findings,
 top-level follow-up, same-thread reply, visible progress, summary reuse, repeat
 trigger and stale/failure handling. That is Gate B; a green job alone is insufficient.
@@ -136,6 +136,9 @@ The report distinguishes authored, locally validated, PR opened, merged,
 installed, activated and live-verified states. It lists every failed or skipped
 check and unresolved repository. Generated fix PRs are never approved or merged
 as acceptance tests.
+
+The [November 2026 validation report](muse-github-setup-validation.md) records
+the completed two-repository rollout, exact live evidence, and remaining limits.
 
 ## Provenance
 
