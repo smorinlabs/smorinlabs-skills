@@ -1,6 +1,6 @@
 [project]
 name = "smorinlabs-skills"
-version = "0.34.0"
+version = "0.35.0"
 description = "Public cross-platform (Claude Code + Codex) plugin marketplace for smorinlabs"
 readme = "README.md"
 requires-python = ">=3.12"
