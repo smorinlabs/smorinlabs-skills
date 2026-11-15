@@ -39,9 +39,11 @@ Install organization-member PR feedback and optional manual fix PRs using the up
    changed PR workflow from running before merge. Otherwise verify that all
    workflow writers are trusted organization members. Unresolved write access
    is an activation blocker, not an assumed safe default.
-   For manual fixes, inspect the repository's secret-file conventions and extend
-   the helper's filename policy where needed. Preparation refuses common
-   credential-like tracked files; arbitrary embedded secrets need human inspection.
+   For manual fixes, inspect the repository's secret-file conventions against
+   the helper's filename policy. Preparation refuses common credential-like
+   tracked files; arbitrary embedded secrets need human inspection. The helper
+   is a vendored managed file, so a policy change for one repository goes
+   upstream into this skill's template, never into the installed copy.
 
 3. **Set the model and credential contract.** The default model is
    `model_api/muse-spark-1.3-contributor` at `https://api.meta.ai/v1`, with the

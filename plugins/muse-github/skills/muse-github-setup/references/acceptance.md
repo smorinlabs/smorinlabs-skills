@@ -32,8 +32,10 @@
    review to stop a modified workflow running from a PR branch.
    Inspect secret-file conventions before enabling manual fixes. Preparation
    refuses tracked credential-like files, including common package-manager,
-   cloud, SSH, and certificate stores. Extend `sensitive()` for repository-specific
-   names and review source for embedded credentials; filenames alone are incomplete.
+   cloud, SSH, and certificate stores. A missing or wrongly matched name is fixed
+   in this skill's template `sensitive()` (the installed helper must stay
+   byte-identical), then re-rendered. Review source for embedded credentials;
+   filenames alone are incomplete.
    A single-maintainer repository cannot satisfy a required review without an
    admin bypass. Record that bypass as an explicit owner decision and rely on
    the verified member-only writer boundary. Preserve existing ruleset bypass

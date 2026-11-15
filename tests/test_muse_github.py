@@ -410,6 +410,19 @@ def test_fix_refuses_tracked_credential_paths_before_model_access(tmp_path, monk
     assert ci.sensitive(path)  # The same paths must also stay out of review diffs.
 
 
+@pytest.mark.parametrize("path", [
+    "tests/fixtures/hooks/opencode/session.created.env.json",
+    "fixtures/a.ENV.yaml", "docs/environment.md", "src/envelope.rs",
+])
+def test_env_named_data_fixtures_are_not_credentials(path):
+    assert not ci.sensitive(path)
+
+
+@pytest.mark.parametrize("path", [".env", ".env.local", "config/prod.EnV", "prod.EnV.local", "app.env"])
+def test_dotenv_shapes_stay_sensitive(path):
+    assert ci.sensitive(path)
+
+
 def test_fix_accepts_ordinary_tracked_project_files(tmp_path, monkeypatch):
     monkeypatch.setattr(ci, "git", lambda *_: "100644 " + "a" * 40 + " 0\tsrc/app.py")
     ci.validate_tree(tmp_path, "fix")
