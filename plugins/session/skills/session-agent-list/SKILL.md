@@ -3,7 +3,7 @@ name: session-agent-list
 allowed-tools: Read, Glob, Grep, Bash
 argument-hint: "[query] [--tool <name>] [--live] [--compact|--exec|--ledger]"
 arguments: [query]
-description: List Claude Code, Codex, Muse, and OpenCode sessions on this machine as action-ready cards with resume commands, filterable by tool and by what is running now. Use when the user asks to list, find, or resume a past session, which sessions touched a repo, or which sessions are in use. Not for orienting inside the current session (session-recap).
+description: List Claude Code, Codex, Muse, and OpenCode sessions on this machine as action-ready cards with resume commands, filterable by tool and by what is running now. Use when the user asks to list, find, or resume a past session, which sessions touched a repo, or which sessions are in use. Not for a saved HTML project/session map or its incremental updates (session-map), or orienting inside the current session (session-recap).
 ---
 
 # session-agent-list
@@ -130,3 +130,5 @@ plugin.
 - `session-handoff` — writes the handoff docs whose lineage (⇤/⇥) this skill
   only reads.
 - `session-loose-ends` — acts on the loose ends a `◒` card reveals.
+- `session-map` — persists a cross-project inventory, renders an HTML map,
+  and updates changed evidence using this skill's native collector.

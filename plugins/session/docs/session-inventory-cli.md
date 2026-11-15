@@ -44,6 +44,8 @@ Global:
 | `--live` | flag | off | only sessions that may be running: `live` is `yes`, or `unknown` (rendered `live?`) |
 | `--since` | `<n>m\|h\|d\|w` or ISO date | none | only sessions updated at or after this point |
 | `--include-subagents` | flag | off | also list subagent and guardian threads (hidden by default, always counted in the census) |
+| `--cache-dir` | path | none | reuse parsed JSONL metadata in this local directory; native stores remain read-only |
+| `--refresh-cache` | flag | off | bypass saved metadata and rebuild the cache; requires `--cache-dir` |
 
 `--` terminator honored; no command reads stdin, so `-` has no file role
 (R3.1/R3.2 N/A). No credential flags exist (R5.5).
@@ -54,6 +56,41 @@ Paths honor `HOME`; Codex honors `CODEX_HOME`; Muse and OpenCode honor
 `XDG_DATA_HOME` (default `~/.local/share`). A tool whose store is absent is
 reported as `absent`, not as an error. SQLite stores are opened read-only
 (`mode=ro` URI) and never written.
+
+### Optional incremental metadata cache
+
+`list --cache-dir <directory>` stores disposable parsed metadata in
+`metadata-v1.json` under the selected directory. Without this option, the
+collector creates no cache and keeps its existing output shape. The cache
+contains metadata such as names and working directories, so it belongs in the
+user's private map/cache directory rather than a public repository.
+
+Unchanged Claude and Codex JSONL files need only a file-stat check. The
+fingerprint includes device, inode, size, nanosecond modification time, and
+nanosecond change time. Changed Claude transcripts reread their bounded head
+and title/name tail; changed Codex transcripts reread the first metadata line.
+Hashes let unchanged regions reuse their parsed values. Other appended message
+content is not parsed because this collector supplies session metadata, not
+conversation assessments. Truncation and replacement trigger current metadata
+reads instead of retaining the former file's fields.
+
+The Codex names index uses a complete-line byte cursor. Before reusing a cursor,
+the collector verifies the entire committed prefix against its saved hash.
+An append then parses only new index records. Prefix rewrites, truncation, and
+replacement rebuild the index. A final record without a newline can contribute
+a provisional name, but its cursor does not advance; the next append retries
+that line, including a previously incomplete JSON record.
+
+Every invocation still enumerates stores, queries SQLite indexes, and checks
+process liveness. Process IDs, registry state, locks, and resume decisions are
+never cached. Cache corruption, parser-version changes, and cache-write failure
+fall back to source reads or uncached results; the `cache.warnings` field records
+the degraded cache. Cache files are replaced atomically and use private file
+permissions. A concurrent source write invalidates that file's cache entry so
+the next update reads it again.
+
+`--refresh-cache` is suitable for a full inventory. `--since` still filters
+results after collection and does not itself enable caching.
 
 | Tool | Sessions | Name | Title | Liveness signal |
 |---|---|---|---|---|
@@ -137,6 +174,21 @@ print `-`.
   `export_command` is offered). `sources.opencode.legacy_only` counts them.
 - Sort: `updated` descending, then `tool`, then `id` (deterministic).
 - Times are UTC ISO 8601 with a `Z` suffix; paths are absolute.
+
+With `--cache-dir`, JSON also includes a `cache` object. Text output adds one
+`# cache` line containing that object. Counters describe this invocation:
+
+| Field | Meaning |
+|---|---|
+| `hits` / `misses` | Metadata files reused from an identical fingerprint / inspected after a new or changed fingerprint. |
+| `parsed_files` | Metadata files requiring at least one JSON parse attempt. A changed Codex transcript with unchanged metadata can have a miss but no parse. |
+| `parsed_records` | JSON parse attempts, including incomplete or invalid records. |
+| `sections_reused` | Bounded metadata regions whose bytes matched their saved hash. |
+| `bytes_read` | Source bytes read by the cached metadata readers, including name-index prefix verification; excludes process probes and SQLite queries. |
+| `index_appends` | Grown Codex name-index files that reused a verified complete-line cursor. |
+| `raced_files` | Files changed during a read and therefore not saved in the cache. |
+| `status` / `warnings` | `ok` or `degraded`, plus cache recovery/write diagnostics. Source failures remain in `sources` and retain exit code `1`. |
+| `parser_version` | Metadata cache compatibility version. |
 
 Errors under `--json` are a single object on stderr (R7.8):
 `{"error": {"code": "source_unreadable", "message": "…", "sources": ["muse"]}}`.

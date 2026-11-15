@@ -149,7 +149,7 @@ always-on digest users keep in their global instructions.
 
 ### session
 
-Session-state septet — orient, sweep, hand off, glance, find, spin off, and move.
+Eight session tools — orient, sweep, hand off, glance, find, map, spin off, and move.
 
 | Skill | Does | Details |
 |---|---|---|
@@ -158,6 +158,7 @@ Session-state septet — orient, sweep, hand off, glance, find, spin off, and mo
 | `session-handoff` | Packages the current session into a self-contained handoff a fresh, zero-context session — often on another machine — can act on cold: the outcome, repo identity and paths, resume state, and the tacit context that dies on compaction. | [docs/skills/session-handoff.md](docs/skills/session-handoff.md) |
 | `session-status` | The mid-flight glance — a manually triggered, plain-language progress map of the active stream, with finished work rolled up and remaining work fine-grained where you stand; adds an ASCII kanban board of what's left when work runs in parallel or much remains. Probe-free and read-only. | [docs/skills/session-status.md](docs/skills/session-status.md) |
 | `session-agent-list` | Finds and lists Claude Code, Codex, Muse, and OpenCode sessions across the machine as action-ready cards: end-state triage (open / handed off / closed clean / loose ends), each tool's session name, what is running now, lineage, and copy-paste resume or transcript commands. Filters by tool and by running sessions. | [docs/skills/session-agent-list.md](docs/skills/session-agent-list.md) |
+| `session-map` | Maintains a saved project and session map with current owners, task counts, closure recommendations, and copyable tab commands. Refreshes changed evidence incrementally or renders saved data offline. | [docs/skills/session-map.md](docs/skills/session-map.md) |
 | `session-spinoff` | Takes a side idea out of the current session and launches it in a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree from origin, with a self-contained brief as its first prompt. Ranks existing Rex sessions by whether they already work in that repo, asks where to put it and which agent to run, and prints the command that jumps to the new tab. | [docs/skills/session-spinoff.md](docs/skills/session-spinoff.md) |
 | `session-move` | Moves a Rex window (a tab in the Rex app) from one Rex session to another on the same computer. Rex cannot move a window between sessions, so the skill recreates it: the same agent (Claude Code, Codex, or Muse), the same conversation resumed by ID, the same working directory, and the same window name. The new window waits until the old agent has exited before it resumes, so two copies never write one transcript, and it falls back to a shell prompt when the agent exits. Refuses, with the reason, a window on another computer, a multi-pane window, or another window's agent that is mid-turn. | [docs/skills/session-move.md](docs/skills/session-move.md) |
 

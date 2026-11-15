@@ -1,6 +1,6 @@
 # session-agent-list
 
-The finder of the session septet: discovers Claude Code, Codex, Muse, and
+The session plugin’s finder: discovers Claude Code, Codex, Muse, and
 OpenCode sessions across the machine and renders them as action-ready cards
 in a converged 22-element format — ephemeral ordinals (`[1]`, stable within the
 conversation), end-state triage on its own line (`●` open mid-work / `⇥`
@@ -41,7 +41,8 @@ open", "what other sessions touched this repo", "find the session where I did
 X", "show my Codex sessions", "list my Muse sessions", "what's running
 right now", or any ask for a resume command for a past session. NOT orientation inside the current session (`session-recap`), not
 active-stream progress (`session-status`), not cleanup (`session-loose-ends`),
-not writing handoffs (`session-handoff`).
+not writing handoffs (`session-handoff`), and not building or updating a saved
+HTML project/session map ([session-map](session-map.md)).
 **Arguments:** `[query] [--tool <name>] [--live] [--compact|--exec|--ledger]`
 — an optional free-text/time/repo filter, a tool filter (`claude`, `codex`,
 `muse`, `opencode`; repeatable), running-now only, plus the view flags.
