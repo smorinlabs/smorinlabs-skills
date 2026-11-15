@@ -1,116 +1,142 @@
 # Installation and acceptance
 
-## Prepare and activate
+Validation is pending until the checks below produce evidence for the edited
+skill and chosen repository. Existing OpenCode validation does not validate this
+Claude Action migration.
 
-1. Verify the exact repository and scope. Work in an isolated worktree based on
-   the current default branch. Read existing configuration before applying the
-   installer. `../scripts/install.py WORKTREE --organization OWNER --codeowner REVIEWER [--with-fixes]`
-   prints the local plan; append `--apply` to write it. `WORKTREE` and `OWNER`
-   come from repository discovery; `REVIEWER` is the owner's `@login` or
-   `@organization/team`, confirmed with the owner. Use `--no-codeowner` in its
-   place only when the owner manages CODEOWNERS another way. Resolve the script
-   from the installed skill.
-2. Inspect every new or changed file. Run `actionlint` on the rendered workflows.
-   Run the target's own lint and format hooks on the staged files. Exclude the
-   vendored `.github/scripts/muse_ci.py` from Python linters and formatters
-   instead of editing it, and revert any autofix to it.
-   Preserve existing project instructions, OpenCode settings, CODEOWNERS entries,
-   and unrelated changes. `--codeowner` adds human ownership for
-   `.github/workflows/opencode-*.yml`, `.github/scripts/muse_ci.py`,
-   `.opencode/muse-ci/`, `opencode.json`, `AGENTS.md`, and the CODEOWNERS file
-   itself; confirm the block
-   landed in the CODEOWNERS file GitHub reads. CODEOWNERS alone is not enforcement; confirm
-   branch rules require those reviews and protect the default branch from the bot.
-   Read the rules that actually apply with `gh api repos/OWNER/REPO/rules/branches/BRANCH`:
-   organization rulesets apply there even when the classic
-   `branches/BRANCH/protection` endpoint returns 404 "Branch not protected".
-   Read back repository collaborator roles and workflow-path push restrictions.
-   Require the write boundary in [security](security.md): all workflow writers
-   are trusted organization members, or server-enforced file-path restrictions
-   block outside writers with bypass limited to the approved member team.
-   Inspect pending PRs for earlier workflow changes. Do not rely on merge-time
-   review to stop a modified workflow running from a PR branch.
-   Inspect secret-file conventions before enabling manual fixes. Preparation
-   refuses tracked credential-like files, including common package-manager,
-   cloud, SSH, and certificate stores. A missing or wrongly matched name is fixed
-   in this skill's template `sensitive()` (the installed helper must stay
-   byte-identical), then re-rendered. Review source for embedded credentials;
-   filenames alone are incomplete.
-   A single-maintainer repository cannot satisfy a required review without an
-   admin bypass. Record that bypass as an explicit owner decision and rely on
-   the verified member-only writer boundary. Preserve existing ruleset bypass
-   actors (for example release Apps) when adding default-branch rules.
-3. Configure active GitHub workflow execution policies for
-   `.github/workflows/opencode-pr-review.yml` with `pull_request`, and when used,
-   `.github/workflows/opencode-fix-pr.yml` with `workflow_dispatch`. Select the
-   owner's approved organization team. Inspect the resulting policy with
-   [GitHub's Actions policies API](https://docs.github.com/en/rest/actions/policies)
-   or **Settings > Actions > Policies**. Exact API payloads must follow the
-   current schema, not guessed identifiers. Read repository policies with
-   `gh api -H "X-GitHub-Api-Version: 2026-03-10" repos/OWNER/REPO/actions/policies`;
-   the organization endpoint needs the `admin:org` token scope. A policy body
-   carries `name`, `enforcement: "active"`, `conditions.workflow_path`
-   (`include`/`exclude`), and rules `restrict_actions_actors` (`allowed_actors`
-   of `{id, type}`) and `restrict_action_events` (`allowed_events`). If the
-   organization has no team, do not invent one: ask the owner either to create
-   the approved team (an organization change) or, for a single-maintainer
-   organization, to approve `User` actors naming the verified maintainers.
-   Never use `RepositoryRole`; a repository role is not membership.
-   Verify scope, enforcement status, team identity, event restrictions, and inherited policies. Record the policy
-   IDs and the read-back evidence. Do not enable the workflow on an unsupported
-   repository plan or substitute broad repository write roles for membership.
-4. Install the Meta key and the membership App secrets as
-   described in [secrets](secrets.md). Read back secret names. Never read values.
-5. Land configuration on the protected default branch through the repository's
-   normal human review process when authorized. The setup PR's base does not yet
-   contain the trusted helper, so that PR is not a valid end-to-end test. Keep
-   `MUSE_CI_ENABLED` unset during this bootstrap. Before activating, compare the
-   installed upstream runtime with [the inspected source](provenance.md), run
-   available credential-free configuration checks, and preserve the result.
-6. With activation and paid testing authorized, set the repository variable
-   `MUSE_CI_ENABLED` to `true`. Open a small, eligible same-repository PR. Inspect
-   the actual run, reviewed SHA, and feedback comment. Run the manual fix workflow
-   only when it is in scope. Do not merge its generated PR.
+## Prepare and apply
 
-The manual workflow needs GitHub's setting permitting Actions to create pull
-requests. Request that repository setting only when necessary and authorized.
-GitHub's current `GITHUB_TOKEN` behavior can put workflows from bot-created PRs
-into an approval-required state. Verify the actual state and provide the
-maintainer's specific approval step when needed. Do not promise all CI starts
-automatically or add a broad App token solely to avoid that approval.
-Source: [workflows triggered by workflows](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+1. Verify repository identity, default branch, visibility, current Git state,
+   worktrees, installation, activation, and authorized scope. Preserve unrelated
+   work. Work from a fresh default-branch revision in an isolated worktree.
+2. Resolve `scripts/install.py` from this skill directory. Run the following
+   command shape with discovered values; `SKILL_DIR` is that resolved directory,
+   `WORKTREE` is the target repository root, `OWNER` its organization, and
+   `REVIEWER` the approved human `@login` or `@organization/team`:
 
-## Evidence to collect
+   ```text
+   python3 SKILL_DIR/scripts/install.py WORKTREE --organization OWNER --codeowner REVIEWER
+   ```
 
-| Scenario | Expected evidence |
+   Add `--with-fixes` for requested manual fixes. Add `--migrate-opencode` only
+   after inspecting the legacy installation. Omitted `--model` preserves an
+   existing policy model; a fresh install defaults to the contributor tier.
+   `--no-codeowner` replaces `--codeowner` only when ownership is managed
+   separately. This is an installer command shape, not a reader task: replace
+   every value and resolve the executable before handing it to a human.
+3. Inspect the printed model and all creates/updates/deletions. The default is
+   read-only. Repeat the same invocation with `--apply` to write local files.
+   Inspect the complete diff, then repeat preview; it must report zero changes.
+   Applying does not configure GitHub secrets, policies, activation, or runs.
+4. Protect the workflow files, helper, `.github/muse-ci/`, marked instructions,
+   and CODEOWNERS through normal human review. Verify the applicable branch
+   rules, including inherited rulesets. Confirm GitHub reads the intended
+   CODEOWNERS file. A classic protection endpoint returning 404 is not proof
+   that organization rulesets are absent. Verify the writer boundary described
+   in [security](security.md).
+5. Read back exact workflow-path execution policies for `muse-pr-review.yml`
+   (`pull_request`), `muse-followup.yml` (`issue_comment` and
+   `pull_request_review_comment`), and optional `muse-fix-pr.yml`
+   (`workflow_dispatch`). Preserve approved actors and inherited restrictions.
+   If an approved team does not exist, bring the genuine organization decision
+   to the owner; do not invent a team or substitute repository roles.
+6. Provision credentials using [secrets](secrets.md), verify names only, and
+   preserve their scope. Inspect all consumers of `MUSE_CI_ENABLED`. Keep its
+   existing value unchanged until cutover is ready. An inactive installation
+   stays inactive until authorized activation.
+
+## Legacy cutover and rollback
+
+`--migrate-opencode` accepts recorded known snapshots of the managed legacy
+workflow/profile/helper/instruction files. It removes recognized obsolete Muse
+workflows and profiles while installing replacements. It preserves the legacy
+model and optional fix support. Root `opencode.json`, root `opencode.jsonc`,
+unrelated `.opencode/` files, other workflows, and surrounding project
+instructions remain untouched.
+
+A modified or unknown managed legacy file is a conflict. Preserve it and prepare
+a reviewed reconciliation; never use force-copying to make migration pass.
+Update path-scoped execution policies and required-check names in the cutover.
+Verify that obsolete Muse bots cannot run alongside the replacement. If an active
+old installation requires a temporary pause, record and restore its prior
+activation value after the new prerequisites are ready.
+
+Before applying, record the target base commit and retain the installer diff.
+Before merge, rollback means reverting only the installation changes in its
+worktree. After merge, rollback is a normal reviewed revert of the migration
+commit, including workflow-path/check policies and any deliberately changed
+activation value. Avoid having both generations active. Re-read the restored
+files and activation afterward. Do not reset a dirty checkout or alter unrelated
+OpenCode configuration.
+
+## Gate A: local implementation
+
+Run these checks against the edited skill worktree, not its old live placement:
+
+| Check | Required coverage |
 |---|---|
-| Eligible member opens/updates a small PR | Successful review run and feedback comment linked to the run summary recording the exact input SHA; no code changes |
-| Fork PR, bot, or draft | Model step does not run and incurs no model call |
-| Outside collaborator with repository write | Platform execution policy blocks the workflow; repository role alone does not qualify |
-| Outside writer changes this workflow, then a member pushes | Server-enforced path restriction prevents the workflow edit; without that restriction or a verified member-only writer model, activation remains blocked |
-| Rerun by someone outside the approved team | Platform blocks it or the authorization check fails before model credentials are used |
-| Private membership cannot be verified | Missing App secrets fail the mint step, or the authorization check refuses; no model call either way |
-| Missing Meta secret | Installation remains incomplete; no repeated paid retries |
-| Rapid PR update | Old run is cancelled or fails the final stale-head check; its run summary records the old input SHA even if the model omitted it from its comment |
-| Malicious PR OpenCode plugin/config | Project discovery disabled and review has no model tools; configuration comes from the protected base |
-| Member manually requests a fix | Fresh runner-created branch, ordinary-file diff, and new PR for human review; no approval/merge |
-| Default branch contains a credential-like file | Manual preparation refuses before the model step; additional secret-file conventions require a reviewed policy |
-| CI on generated fix PR | Actual check state recorded; maintainer approves pending workflows if GitHub requires it |
+| Installer/helper tests | Fresh install, exact legacy migration, idempotence, retained model/fixes, unrelated-file preservation, changed legacy conflict, symlink refusal, failures |
+| Workflow checks | Rendered YAML lint; event/actor/mention guards; explicit token; all Muse aliases; classifier false on every action |
+| Runtime isolation | Explicit settings through SDK; no PR hooks/skills/MCP/instruction startup; no shell or review edits; fake credential paths denied to reads/native search; permitted CI log reads; safe in-checkout review aliases; escaping/credential/cyclic alias refusal; all fix symlinks refused; read-only tool exposure |
+| Package/skill checks | Meaningful repository tests, generated manifest check, skill content/docs/trigger review, static load check against edited source |
 
-Use offline fixtures for unsafe negative cases when possible. Never recruit an
-outside collaborator, grant access, or expose a real secret just to exercise a
-negative test. Live GitHub policy behavior remains a separate acceptance check.
-Bound paid testing to the authorized runs; a failed run is evidence to diagnose,
-not permission to loop indefinitely.
+Record commands, exit statuses, versions, and passed/failed/skipped results.
+Do not claim Gate A while a required failure remains. Skill loading and static
+workflow checks do not establish a real GitHub interaction.
+Review symlink checks must include the startup-configuration exception described
+in [security](security.md): aliases originating at or beneath the action's
+restored paths fail before model use, while safe aliases originating elsewhere
+may point into their regular directories.
 
-## Status vocabulary
+## Gate B: one live pilot
 
-- **Authored:** files and instructions exist in a worktree.
-- **Locally validated:** deterministic helper tests, workflow lint, and package checks passed.
-- **Installed:** reviewed files landed and prerequisites/secret names were read back.
-- **Live review verified:** the actual authorized run produced feedback linked to its recorded input SHA.
-- **Live fix verified:** the actual manual run created the intended branch and PR.
+Select exactly one repository after Gate A. A second pilot is optional only when
+it exercises a materially different supported setup. Inventory may proceed, but
+no other consumer migration starts until the first pilot passes all applicable
+checks. Follow normal branch/review/merge rules and existing authorization.
 
-Do not collapse those states into "working". Secret presence cannot establish
-Meta authentication. Static permissions cannot establish the moving runtime's
-behavior. Document failures and skipped live checks explicitly.
+Land the trusted setup before the test PR. The setup PR's base lacks the new
+helper and is not a valid acceptance test. Read back installed commits, policies,
+secret names, and actual activation. Activate only within the authorized scope.
+Use small reversible PRs and clearly identified test comments.
+
+| Scenario | Required evidence |
+|---|---|
+| Eligible PR opens/updates | Official action uses Muse; exact input SHA recorded; progress visible; no code mutation |
+| Deliberate unambiguous defect | Valid inline finding on the intended file, line, and reviewed commit |
+| Member's new `@muse` PR comment | Relevant follow-up with PR context and a separate response |
+| Member's new inline `@muse` reply | Actual completed reply in the intended discussion; temporary upstream progress fallback is permitted only when helper relocation succeeds and the fallback is removed |
+| Progress and repeat review | Visible progress updates; final marked summary reused on another eligible trigger; no unintended leftover duplicate |
+| PR advances during run | Cancellation or explicit stale failure; old/current SHA recorded; existing findings acknowledged as possibly stale |
+| Ineligible actor/event | Rejected before Meta credentials are used; prefer offline fixtures for dangerous cases |
+| Web tools | Read-only permission/exposure verified locally; actual WebFetch/WebSearch provider/network behavior recorded separately in authorized live acceptance |
+| Failure | Diagnosable failed outcome; no green completion without a successful updater tool result and verified publication; no Anthropic classifier request or silent model fallback |
+| Optional manual fix | New helper-created branch and separate PR; ordinary-file diff; human review required; no approval or merge |
+| Fix failure/invalid changes | No publication after unsuccessful model action or protected/sensitive-path validation failure |
+
+Collect exact commits, workflow/run URLs, inline/follow-up/reply URLs, stable
+summary ID, runtime versions, and relevant captured output. A green job without
+the expected interaction fails acceptance. Diagnose each paid failure before
+another bounded attempt. Do not expose real secrets or grant outsiders access
+to manufacture a negative test.
+
+GitHub must allow Actions to create PRs for manual publication. Inspect that
+repository setting only when fixes are in scope. Verify actual checks on the
+bot-created PR; inherited policies or GitHub token behavior may require a human
+approval. Do not add a privileged token to bypass that state. Supply a concrete
+reader task when only a maintainer can finish it. Source:
+[workflows triggered by workflows](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+
+## Batches and completion
+
+After Gate B, migrate one or two similar repositories first. Refresh each
+repository before preparation and collect installation/activation/live evidence.
+Expand only when the results support it. Stop on systemic failure and repair the
+shared skill before advancing. Keep every failure, skip, and unresolved repository
+in the rollout ledger; exclude a repository only within the user's scope.
+
+Report **authored**, **locally validated**, **PR opened**, **merged**, **installed**,
+**activated**, and **live-verified** separately. Secret-name presence does not
+prove credential validity. No required repository or acceptance check may be
+silently counted as complete. Skill deployment also requires its live placement
+to resolve to the updated source after the normal merge/sync process.

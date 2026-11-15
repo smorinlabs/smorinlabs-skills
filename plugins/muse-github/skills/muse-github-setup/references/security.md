@@ -1,139 +1,193 @@
 # Security and compatibility
 
-The templates implement a conservative starting policy. An installation must
-verify GitHub enforcement and the installed OpenCode runtime before claiming
-the workflow is ready. Configuration permissions are controls in a trusted
-agent runtime, not an operating-system sandbox.
+This installation keeps Muse as the model backend of the official Claude Code
+Action. Meta documents that integration; Anthropic explicitly excludes
+non-Claude models from support. Runtime permissions reduce the capabilities of
+a trusted Claude runtime. They do not create an operating-system sandbox.
 
-## Who can run
+## Authorized actors and workflow sources
 
-| Surface | Required policy |
+| Surface | Required conditions |
 |---|---|
 | Automatic review | Open, non-draft, same-repository PR into the default branch; PR author, original actor, and rerun actor are current human organization members with repository write access |
-| Manual fix | `workflow_dispatch` on the default branch; original actor and rerun actor satisfy the same member and write checks |
-| GitHub platform | Active workflow execution policies for the exact review and fix paths, allowing an approved organization team and only the corresponding event |
-| Excluded initially | Fork PRs, bots, outside collaborators, comment triggers, personal-owner repositories, self-hosted runners |
+| Follow-up | Same eligible PR; newly created top-level or inline review comment containing `@muse`; comment author equals original actor; original/rerun actors meet the same member/write checks |
+| Manual fix | `workflow_dispatch` from the default branch; original/rerun actors meet the same member/write checks |
+| Excluded | Forks, bots, outside collaborators, drafts, issue triage, edited/deleted comments, personal-owner repositories, reused/self-hosted runners |
 
-The helper checks current membership with `GET /orgs/ORG/members/USER` and
-repository permission separately. GitHub may hide private membership from the
-repository token. Each workflow therefore mints a short-lived installation
-token from a dedicated organization GitHub App whose only permission is
-Members: read (`actions/create-github-app-token`, SHA-pinned, with
-`permission-members: read`). Without the App secrets the mint step fails and
-no model call happens. The App key is exposed only to the mint step and its
-token only to the trusted authorization step, never to OpenCode. A lookup error does not become an eligible actor.
+The helper checks organization membership and repository permission separately.
+The Members-read App token belongs only in authorization. Its private key never
+reaches the model step. A failed lookup refuses execution; `author_association`
+is not proof of current membership.
 
-GitHub workflow execution protections are available for all public repositories
-and private repositories on Team/Enterprise. Inspect the actual target plan and
-policy. A YAML `if` can be changed in a PR, so it cannot serve as the primary
-boundary against a repository collaborator. Platform policies apply before
-workflow execution. Protect the configuration with branch rules and CODEOWNERS
-as well. Those merge protections do not prevent PR-branch workflow changes
-from running. An outside writer could remove the helper call in this same
-workflow, then a later member push could satisfy the platform actor policy.
-Protecting only the triggering actor does not close that case.
+Require active GitHub workflow execution policies for the exact installed paths
+and their permitted events, scoped to the approved organization team or existing
+explicitly approved maintainers. Preserve inherited policies. Verify either that
+all workflow writers are trusted members or that server-enforced file-path
+restrictions block outside writers with only the approved member bypass. Inspect
+open PRs for pre-existing workflow edits. CODEOWNERS and required human reviews
+protect merge; they cannot stop a modified PR workflow from executing beforehand.
+Unavailable enforcement is an activation blocker, not permission to weaken the
+boundary. Do not add organization-wide policies or privileged Apps implicitly.
 
-Before activation, verify either that all workflow writers are trusted human
-organization members, or that an active server-enforced push ruleset blocks
-changes to `.github/workflows/**/*` for everyone except the approved member
-team. Do not grant a broad write-role bypass. Include the helper and CI profiles
-in the protected paths as well. Inspect existing open PRs for earlier workflow
-changes before enabling a newly added restriction. The installer must report
-unverified access or unavailable enforcement as a blocker. It must not revoke
-collaborator access or change an organization-wide rule without authorization.
+Sources: [execution protections](https://docs.github.com/en/actions/how-tos/administer/control-workflow-execution),
+[push-ruleset path restrictions](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#restrict-file-paths).
 
-Push rulesets are documented for private/internal repositories on supported
-plans. Do not promise them for a public repository. A public repo with outside
-writers needs an equivalent verified restriction or a revised architecture;
-the current installer keeps these workflows disabled in that case. Likewise,
-path-scoped policies do not stop a writer from introducing a different workflow
-that reads repository secrets. This design trusts approved workflow writers;
-it does not revoke their ordinary GitHub powers.
+## Credentials and capabilities
 
-Source: [GitHub execution protections](https://docs.github.com/en/actions/how-tos/administer/control-workflow-execution).
-The additional write boundary is described by
-[GitHub push rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#restrict-file-paths).
+Review policy permits available read-only tools. File reads/searches, web tools,
+MCP resource inspection, runtime/task listings, and CI status/log inspection are
+allowed. Editing and writing require the separately authorized optional fix
+workflow. Permission does not establish backend support for a web tool.
 
-## Runtime controls
-
-| Control | Review | Manual fix |
+| Control | Review and follow-up | Optional manual fix |
 |---|---|---|
-| Token | `contents: read`, `pull-requests: write` | `contents: write`, `pull-requests: write` |
-| Model tools | All denied; supplied diff only | File read/edit only; protected configuration denied; credential-like tracked files block preparation |
-| Base | Event's exact base/head commits | Dispatch's exact default-branch commit |
-| Output | Feedback comment linked to a run summary recording the input SHA | New `opencode/dispatch-...` branch and PR |
-| Job limit | 10 minutes; newer PR run cancels older | 15 minutes; one running fix per repository |
+| Repository token | `contents: read`, `pull-requests: write`; optional read permissions for CI metadata | `contents: write`, `pull-requests: write` for helper publication |
+| Model built-ins | Read-only inspection tools; no shell or edits | Read-only inspection tools plus ordinary-file edits; no shell |
+| GitHub model tools | Action's tracking-comment updater and explicit inline-comment tool; CI metadata/log inspection | No model-controlled GitHub publication |
+| Input revision | Recorded exact PR base/head commits | Exact default-branch dispatch commit |
+| Publication | Immediate inline findings; progress; helper summary consolidation after successful checks | Helper validates, commits, pushes new branch, creates separate PR |
 
-Both profiles disable sharing, snapshots, formatters, language servers, shell,
-web tools, subagents, and external skills. Disabling shell alone would not
-prevent a language server or formatter from executing project-controlled code.
-The helper copies the trusted base profile and root instructions into a fresh
-runner-temporary directory, disables project config discovery, and supplies
-fresh XDG configuration/data/cache paths. Existing project plugins and custom
-tools are not loaded. The workflows must remain on fresh GitHub-hosted runners;
-this setup does not isolate a reused runner's home directory.
+`pull-requests: write` permits top-level PR comments through GitHub's issue-comment
+endpoints. `issues: write` is not needed for this PR-only integration. Optional
+CI inspection may need `actions: read` and `checks: read`; grant only what the
+chosen feature uses. Sources: [PR comment permissions](https://docs.github.com/en/rest/issues/comments#create-an-issue-comment).
 
-`default_agent` is explicit because the inspected GitHub runner omits the
-Action's `agent` input when it sends the model prompt. The global permission
-rules also apply to its default agent. The installer preserves root
-`opencode.json` for normal discovery, but CI uses its separate trusted profile.
+The action receives an explicit repository `github_token`, so it skips the Claude
+GitHub App token exchange. No `id-token: write` is required for that path. The
+repository token can do more than the exposed model tools; the trusted action,
+helper, and runtime remain part of the security boundary.
 
-Review input is a complete textual diff limited to 60,000 bytes, not a
-silently truncated diff. Credential-like changes are refused for human review.
-The case-insensitive filename policy includes dotenv names (`.env`, `.env.*`,
-`*.env`, and `*.env.*` except JSON/YAML/TOML/snapshot data files), key/certificate stores,
-`.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials`, `credentials.json`,
-and conventional SSH private-key names. Binary changes and context outside the diff
-need human inspection. The model cannot load PR instruction files as agent
-configuration or read beyond the supplied diff. Changed instructions can appear
-in that diff as untrusted data. It cannot execute a project plugin because it
-has no tools and project discovery is disabled. GitHub's live PR title/comments still reach the model
-through the stock Action; treat them as untrusted context, not code evidence.
+The Meta secret `META_MUSE_CI_API_KEY` is supplied as `ANTHROPIC_AUTH_TOKEN` and as
+action `anthropic_api_key`. The latter satisfies its launch check. Routing uses
+`ANTHROPIC_BASE_URL=https://api.meta.ai`, with every main/alias/subagent model
+variable set to the chosen Muse ID. Do not configure an Anthropic fallback.
+`classify_inline_comments: 'false'` is mandatory on every invocation: the pinned
+classifier otherwise sends the supplied key and buffered comments directly to
+Anthropic. The false setting publishes inline findings immediately.
 
-The helper creates a local branch at the event SHA before OpenCode starts.
-The inspected runner's later fetch updates remote refs, while checkout of the
-existing local branch retains the original commit. Offline tests advance a
-remote branch and exercise that exact sequence. The final check detects an
-advanced PR and marks the run failed. It cannot retract a comment already
-posted by the stock runner. The prompt requests the SHA in the comment, but
-model compliance is not guaranteed. The trusted helper records the input and
-final PR SHAs in the run summary, which the stock comment links to. That summary
-is the authoritative commit record. Concurrency cancels older runs where
-possible. Do not claim atomic current-head publication.
+## Configuration and execution isolation
 
-The fix profile edits regular project files. Preparation refuses symlinks,
-submodules, and any tracked credential-like file before the model step. This
-includes nonsecret example files with those names: the starting policy is
-deliberately conservative. Before activation, inspect the target repository's
-actual secret-file conventions against the helper's `sensitive()` predicate.
-Changes to it belong in this skill's template, not the installed copy.
-Filename rules cannot identify secrets embedded in arbitrarily named source files; inspect that separately. Do not activate a
-manual fix workflow with unreviewed secret paths. It starts from the trusted
-default branch, disables hooks, formatters and language servers, and leaves
-test execution to ordinary PR CI. Protected-path tool permissions are the
-preventive control; the final diff check is diagnostic and runs after the stock
-Action may already have pushed. A GitHub token with PR-write permission can do
-more than post comments, so configuration and human branch protection remain
-necessary. These profiles never intentionally approve or merge.
+Configuration and the helper come from the trusted base/default revision. The
+helper copies runtime settings, state, and itself outside the checkout; it sets
+isolated `CLAUDE_CONFIG_DIR` and XDG directories without overriding `HOME`.
+It supplies a trusted absolute settings path explicitly with `--settings`.
 
-Git authentication uses `gh auth git-credential` with a step-scoped token.
-Checkout does not persist credentials. Neither a token value nor a private
-1Password reference is written into repository configuration.
+The action uses non-bare `--restricted`, `--disable-slash-commands`, nonempty
+`--setting-sources user`, and `--strict-mcp-config`. Explicit settings set
+`disableAllHooks: true`, `autoMemoryEnabled: false`, and
+`claudeMdExcludes: ["**"]`. This retains native read-only tools while suppressing
+project settings, instructions, hooks, skills, and unapproved MCP discovery.
+The profile does not depend on undocumented environment switches. Do not add
+plugins, project executable tools, dependency installs, or broad GitHub MCP
+permissions. Shell execution remains denied. The runtime probe must confirm
+that project-controlled hooks, skills, and executable plugins do not load.
 
-## Dependency limits
+`--tools` supplies a nonempty exclusive built-in list. `--allowedTools` only
+pre-approves calls and is not an exclusive inventory. Bare-name denials remove
+Bash, edit tools in reviews, subagents, skills, and file-operation MCP tools.
+An explicit final permission mode overrides tag mode's default `auto`/`acceptEdits`
+and injected git-wrapper allow rules. Do not use an empty `--tools ""` argument:
+the pinned action parser does not preserve empty option values correctly.
+When updating the runtime, compare its available read-only tools with both the
+built-in inventory and approval rules. Add newly available read-only tools;
+do not carry forward a narrower inventory without checking it.
 
-The direct `anomalyco/opencode/github` action is pinned to
-`a97622c801f4ca571530ddc51076af659a9c32cd`. At that revision it chooses the latest
-CLI, runs the upstream installer, and uses `actions/cache@v4`. This is the
-accepted direct-Action tradeoff. It does not pin the entire runtime. Refresh
-source inspection and credential-free compatibility checks before activation
-or updating templates. Do not replace it with a custom installer silently.
-The credentials supplied to this composite Action are inherited by its version
-lookup, cache, and installer steps as well as the final OpenCode command.
-Trust in those upstream components is therefore part of the accepted boundary.
-Isolating credentials from setup and pinning every nested dependency would
-require an upstream capability or a separately approved wrapper/vendor design.
+Generated settings block file-tool reads and writes outside working directories,
+deny credential-like filenames, and deny Git/runtime credential locations.
+The action configures Git authentication, so `persist-credentials: false` alone
+is insufficient. The helper rejects submodules and credential-like files before model use.
+Manual fixes reject every symlink. Reviews and follow-ups allow an existing
+in-checkout file or directory alias only after bounded validation of every link
+hop and target descendant. Targets must exist inside the checkout and remain
+regular files/directories. Links into `.git`, sensitive filenames, or known
+credential trees fail, as do dangling links, escapes and cycles. Inspection is
+bounded to 10,000 path components, 40 link hops per resolution, and 64 directory
+levels. The validator preserves accepted aliases; it does not rewrite consumer
+symlinks or enable the skills/instructions they point to. Filename rules cannot find secrets
+embedded in arbitrary source; inspect repository-specific conventions.
 
-Source: [inspected Action](https://github.com/anomalyco/opencode/blob/a97622c801f4ca571530ddc51076af659a9c32cd/github/action.yml),
-[GitHub runner](https://github.com/anomalyco/opencode/blob/a97622c801f4ca571530ddc51076af659a9c32cd/packages/opencode/src/cli/cmd/github.handler.ts),
-[OpenCode permissions](https://opencode.ai/docs/permissions/).
+The pinned action dereferences symlinks when snapshotting startup configuration.
+To keep final workspace verification reliable, preparation rejects a symlink
+located at or beneath `.claude`, `.husky`, `.mcp.json`, `.claude.json`,
+`.gitmodules`, `.ripgreprc`, `CLAUDE.md`, or `CLAUDE.local.md` before model use.
+A safe alias originating elsewhere may point into a regular directory under
+those paths. For example, an alias in `.agents/skills/` may point to a regular
+directory in `.claude/skills/`; configuration discovery remains disabled.
+
+The helper creates `RUNNER_TEMP/github-ci-logs` and exposes only that directory
+through `--add-dir`, alongside the checkout. The action's read-only CI log tool
+writes `job-<numeric-job-id>.log` files there. The model may inspect those logs;
+the rest of runner temp remains outside its working directories. The helper's
+own runtime directory retains explicit Read/Edit denials. Model inspection of
+CI logs does not authorize running the commands printed inside them.
+Source: [CI server](https://github.com/anthropics/claude-code-action/blob/f3b070c88125d33dbae5653df5f143101d4ea9dc/src/mcp/github-actions-server.ts).
+
+Native Read denials apply to Grep/Glob on a best-effort basis. Do not describe
+these permissions as OS isolation or as restrictions on arbitrary subprocesses.
+Runtime acceptance must probe shell/edit denials, project startup suppression,
+fake credential reads/searches, safe alias reads/searches, denial through
+unsafe aliases, and permitted log reads. Sources:
+[CLI restricted mode and settings flags](https://code.claude.com/docs/en/cli-reference),
+[permission rules](https://code.claude.com/docs/en/permissions#read-and-edit),
+[outside-directory file access](https://code.claude.com/docs/en/settings-reference#permissionsblockreadsoutsideworkingdirectories).
+
+`WebSearch` and `WebFetch` are permitted. Their operation depends on the provider,
+network, and Claude runtime. A local mock proves tool exposure and permission
+behavior, not real web access. In the inspected runtime, WebFetch performs a
+claude.ai domain-safety request; do not claim all network traffic stays on the
+Meta endpoint or that a mock proves external web success. The main model and
+all model aliases remain routed to Muse. Record actual provider/tool failures
+rather than silently disabling the requested read-only capability.
+
+The action restores sensitive startup files from the PR base and saves PR
+variants under `.claude-pr/`. Those variants are untrusted review data. Final
+workspace verification accounts for the known restoration; it must still reject
+unexpected model changes. Configuration restoration is an additional defense,
+not a substitute for suppressed discovery.
+
+## Progress, summaries, and stale findings
+
+`track_progress: true` selects tag mode even with an explicit prompt. An explicit
+prompt bypasses the upstream mention check, so the trusted helper must enforce
+`@muse` on follow-ups. The action creates a progress comment and updates it through
+its minimal comment tool. Inline review events attempt a discussion reply. The pinned action addresses
+the triggering comment ID, but GitHub accepts only the top-level discussion ID.
+When a member replies to a reply, upstream progress may therefore fall back to a
+top-level comment. Preparation validates the real discussion root without
+changing the original member event. Finalization posts the completed fallback
+answer to that root, verifies the new reply, then deletes the fallback. Progress
+may temporarily appear at top level; final thread placement must pass the pilot.
+
+Set `use_sticky_comment: 'false'`. Its upstream matcher targets Claude bot
+identities, which do not reliably match `github-actions[bot]`. For automatic
+reviews, the helper locates the new run-linked bot comment, upserts the marked
+summary, and deletes the transient comment only after successful publication.
+Finalization requires action outcome and conclusion success, a successful
+`update_claude_comment` tool result in the SDK execution log, and new bot-comment
+readback matching its exact ID and URL. Normal responses must contain the exact
+run URL. The pinned action cannot append that link to an inline event's top-level
+fallback, so the helper appends the trusted run link when repairing that specific
+case and verifies the resulting thread reply. An untouched initial progress
+comment is not completion evidence. Ambiguous matching or wrong-thread
+publication fails.
+Follow-ups retain their individual responses.
+There may briefly be two comments; consolidation is not atomic.
+
+The helper records the reviewed SHA and checks the live head before finalization.
+Every inline finding must name that recorded SHA. The upstream inline tool can
+otherwise default to the latest head. Concurrency cancels older PR runs, but
+findings already published may remain after cancellation or a stale-head failure.
+The recorded run summary is the authoritative input record. Never claim atomic
+publication against the latest commit or automatic retraction of stale findings.
+
+## Fix and dependency limits
+
+The manual model edits ordinary files only. A trusted helper validates all changed
+paths before committing, pushing a fresh branch, and creating a PR for human
+review. Invalid or failed runs do not publish; an empty diff creates no PR.
+Protected CI/agent files, credentials, symlinks, approval, and merging remain
+outside the model's capability contract. Ordinary PR CI runs tests afterward.
+
+The direct action SHA is pinned; its installer URL and transitive resolution
+remain external dependencies. See [provenance](provenance.md). Record actual
+runtime versions at acceptance and recheck isolation when updating them.
