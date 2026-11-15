@@ -10,6 +10,16 @@ const {parseHTML} = require('linkedom');
 const html = fs.readFileSync(process.argv[2], 'utf8');
 const {window, document} = parseHTML(html);
 const data = JSON.parse(document.getElementById('inventory').textContent);
+if (process.argv.includes('--adversarial')) {
+  const plan = Object.values(data.plans).find(p => p.phases?.length);
+  assert(plan, 'adversarial fixture needs a project plan');
+  const phase = plan.phases[0];
+  phase.counts = {...phase.counts, total: '1"><img id="session-map-injected-total">',
+    complete: '<img id="session-map-injected-count">'};
+  phase.tasks = [{id: 'P01-T01', state: 'open', title: 'Synthetic task',
+    line: '<img id="session-map-injected-line">'}];
+  document.getElementById('inventory').textContent = JSON.stringify(data);
+}
 const source = [...document.querySelectorAll('script')].find(s => !s.id).textContent;
 let copied = null, exported = false;
 for (const id of ['search', 'manager', 'agent']) {
@@ -25,6 +35,8 @@ function visit(hash) {
   location.hash = hash;
   window.dispatchEvent(new window.Event('hashchange'));
   assert(document.getElementById('view').textContent.length > 0);
+  assert(!document.querySelector('[id^="session-map-injected-"]'),
+    'saved inventory text became an HTML element on '+hash);
 }
 function click(id) { document.getElementById(id).dispatchEvent(new window.Event('click', {bubbles: true})); }
 for (const route of ['overview','projects','sessions','closure','history','changes','sources']) visit('#'+route);
