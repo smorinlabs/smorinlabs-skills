@@ -80,8 +80,14 @@ Do not reuse a release or other privileged App: its key would reach the
 authorization step with far more than membership read. The minted token lasts
 about an hour and is revoked when the job ends. If the private `repo-secrets`
 skill supports `--app muse-ci-members`, use it after the setup PR merges (its
-detection reads the default branch). Otherwise hand the owner the two secret
-names and verify presence with `gh secret list`. Never request the key in chat.
+detection reads the default branch, so it takes no `--workflow-root`):
+`scripts/repo_secrets set --repo OWNER/REPO --app muse-ci-members`, with
+`--dry-run` first. Both apps read 1Password, so ask the owner to unlock it
+before the real `set`. A locked vault fails with "check 1Password access".
+Otherwise hand the owner the two secret names and verify presence with
+`gh secret list`. Never request the key in chat.
+The mint step passes `owner:` and requests an organization permission, so a
+selected-repositories App installation needs no per-repository addition.
 Personal-account repositories are out of scope: the workflows skip them, and
 personal accounts have no organization membership to check.
 
