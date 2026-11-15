@@ -2733,3 +2733,32 @@ consumers were migrated incrementally; the inactive consumer remains inactive.
 - [x] [P74-T12] Validate installer preservation/idempotence, runtime permissions, prepublication path checks, workflow lint, manifests, skill loading, and independent review.
 - [x] [P74-T13] Land/install 0.6.0 in #124 and prove one bounded live audit-repair pilot (lost-sessions run 43745671254; generated PR #38 closed unmerged; temporary harness removed in #39).
 - [x] [P74-T14] Migrate the remaining audit consumers incrementally; verify the real no-documentation-failure skip in py-launch-blueprint#608 and preserved inactivity in the private consumer. Exact private evidence remains in the private rollout ledger.
+
+
+## [x] Project P75: Persistent project and session maps (session 0.19.0)
+
+**Goal**: Turn a one-off HTML session inventory into a public `session-map` skill
+that preserves evidence and user corrections, refreshes changed work, and renders
+the saved map without collecting the inventory again. Implementation and local
+validation are complete; GitHub review and delivery are tracked by the feature PR.
+
+Design: [session-map design](docs/plans/2026-11-15-session-map-design.md).
+Usage: [session-map](docs/skills/session-map.md).
+
+### Tests & Tasks
+
+- [x] [P75-T01] Versioned saved state, stable session/project identities, source coverage, generation-bound assessments, user annotations, and atomic file replacement.
+- [x] [P75-T02] Native metadata cache in the shared collector; liveness remains independently refreshed.
+- [x] [P75-T03] Read-only Rex, named Herdr, native conversation, Agent Deck registry, Git worktree, and project-plan adapters.
+- [x] [P75-T04] Full, update, scoped update, render, assessment, annotation, and explicit prototype-import commands.
+- [x] [P75-T05] Standalone HTML with project/session navigation, phases, counts, owners, closure review, history, changes, source coverage, and copyable commands.
+- [x] [P75-T06] Skill instructions, public documentation, adjacent trigger boundary, session 0.19.0 metadata, and generated manifests.
+- [x] [P75-TS01] Snapshot/assessment, failure-retention, task-counting, source-cache, import, and render-only regression tests.
+- [x] [P75-TS02] Synthetic full → assess → annotate → changed update → unchanged update → offline render; unchanged metadata/plan parse counts are zero.
+- [x] [P75-TS03] Private live full/update smoke, DOM routes/search/copy/export checks, and headless browser layout inspection.
+- [x] [P75-TS04] Repository checks: 1,692 tests passed, 4 platform skips; generator and naming checks passed. Claude Code and Codex deep-load checks passed.
+
+Runtime support is macOS/Linux with Python 3.11+. Agent Deck entries remain
+registry observations unless exact native identity supplies corroboration.
+Remote PR evidence is an explicit agent assessment input, not an automatic
+network scan. Private inventories and captures are not included in this repo.

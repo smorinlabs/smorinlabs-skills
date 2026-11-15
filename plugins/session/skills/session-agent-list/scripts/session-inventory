@@ -13,7 +13,9 @@ plugin for the interface spec. Stdlib only. Never writes to any store.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -23,9 +25,11 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
+CACHE_VERSION = 1
 TOOLS = ("claude", "codex", "muse", "opencode")
 TAIL_BYTES = 256 * 1024
 HEAD_LINES = 60
@@ -34,6 +38,114 @@ CODEX_HIDDEN_SOURCES = {"subagent", "guardian_review"}
 
 class SourceError(Exception):
     """A whole store exists but could not be read."""
+
+
+def file_signature(path: Path) -> list[int]:
+    stat = path.stat()
+    return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+
+
+def cache_checksum(entry: dict) -> str:
+    payload = {k: v for k, v in entry.items() if k != "checksum"}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+class MetadataCache:
+    """Optional, disposable cache of parsed metadata. Never caches liveness.
+
+    Unchanged files require only stat. Changed transcript files reread bounded
+    metadata regions; unchanged regions are not parsed again. The Codex names
+    index additionally retains a verified complete-line cursor.
+    """
+
+    def __init__(self, directory: Path, refresh: bool = False):
+        self.path = directory.expanduser().resolve() / "metadata-v1.json"
+        self.entries: dict[str, dict] = {}
+        self.stats = {"hits": 0, "misses": 0, "parsed_files": 0,
+                      "parsed_records": 0, "sections_reused": 0,
+                      "bytes_read": 0, "index_appends": 0, "raced_files": 0}
+        self.warnings: list[str] = []
+        if refresh:
+            return
+        try:
+            saved = json.loads(self.path.read_text())
+            if (not isinstance(saved, dict) or saved.get("parser_version") != CACHE_VERSION
+                    or not isinstance(saved.get("entries"), dict)):
+                self.warnings.append("cache format changed; rebuilding metadata")
+            else:
+                self.entries = saved["entries"]
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError):
+            self.warnings.append("cache unreadable; rebuilding metadata")
+
+    def read(self, path: Path, kind: str, loader) -> dict:
+        key = f"{kind}:{path.resolve()}"
+        before = file_signature(path)
+        previous = self.entries.get(key, {})
+        if not isinstance(previous, dict):
+            previous = {}
+        if previous and previous.get("checksum") != cache_checksum(previous):
+            self.warnings.append("invalid cache entry; rebuilding its metadata")
+            previous = {}
+        if previous.get("signature") == before and isinstance(previous.get("value"), dict):
+            self.stats["hits"] += 1
+            return copy.deepcopy(previous["value"])
+        self.stats["misses"] += 1
+        entry = {"signature": before, "sections": {}}
+        parsed_before = self.stats["parsed_records"]
+        value = loader(previous, entry)
+        if self.stats["parsed_records"] > parsed_before:
+            self.stats["parsed_files"] += 1
+        if file_signature(path) == before:
+            entry["value"] = copy.deepcopy(value)
+            entry["checksum"] = cache_checksum(entry)
+            self.entries[key] = entry
+        else:
+            # An observation may race a writer; do not attach it to a later fingerprint.
+            self.stats["raced_files"] += 1
+            self.entries.pop(key, None)
+        return value
+
+    def section(self, raw: bytes, name: str, previous: dict, entry: dict, parser) -> dict:
+        digest = hashlib.sha256(raw).hexdigest()
+        sections = previous.get("sections", {})
+        saved = sections.get(name, {}) if isinstance(sections, dict) else {}
+        if (isinstance(saved, dict) and saved.get("hash") == digest
+                and isinstance(saved.get("value"), dict)):
+            self.stats["sections_reused"] += 1
+            value = copy.deepcopy(saved["value"])
+        else:
+            value = parser(raw)
+        entry["sections"][name] = {"hash": digest, "value": copy.deepcopy(value)}
+        return value
+
+    def parse(self, raw: bytes | str):
+        self.stats["parsed_records"] += 1
+        return json.loads(raw)
+
+    def save(self) -> None:
+        temp_path = None
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with tempfile.NamedTemporaryFile("w", dir=self.path.parent, delete=False) as fh:
+                temp_path = Path(fh.name)
+                json.dump({"parser_version": CACHE_VERSION, "entries": self.entries}, fh)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temp_path, self.path)
+        except OSError:
+            self.warnings.append("cache could not be saved; source results are still current")
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def report(self) -> dict:
+        return {**self.stats, "status": "degraded" if self.warnings else "ok",
+                "warnings": self.warnings, "parser_version": CACHE_VERSION}
 
 
 # --- helpers ------------------------------------------------------------------
@@ -126,30 +238,62 @@ def claude_registry(home: Path) -> dict[str, dict]:
     return live
 
 
-def claude_title_and_name(path: Path) -> tuple[str | None, str | None]:
-    size = path.stat().st_size
-    with path.open("rb") as fh:
-        fh.seek(max(0, size - TAIL_BYTES))
-        tail = fh.read().decode("utf-8", "replace").splitlines()
-    title = name = None
-    for line in reversed(tail):
-        if title is None and '"ai-title"' in line:
-            title = _field(line, "aiTitle")
-        if name is None and '"custom-title"' in line:
-            name = _field(line, "customTitle")
-        if title and name:
-            break
-    return title, name
+def claude_metadata(path: Path, cache: MetadataCache | None = None) -> dict:
+    def head(raw: bytes) -> dict:
+        result = {"spawn_dir": None, "branch": None, "created": None, "unreadable": True}
+        for line in raw.decode("utf-8", "replace").splitlines():
+            try:
+                obj = cache.parse(line) if cache else json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            result["unreadable"] = False
+            if obj.get("cwd") and not result["spawn_dir"]:
+                result["spawn_dir"] = obj["cwd"]
+                result["branch"] = obj.get("gitBranch")
+            if obj.get("timestamp") and not result["created"]:
+                result["created"] = iso_normalize(obj["timestamp"])
+            if result["spawn_dir"] and result["created"]:
+                break
+        return result
+
+    def titles(raw: bytes) -> dict:
+        result = {"title": None, "name": None}
+        for line in reversed(raw.decode("utf-8", "replace").splitlines()):
+            for field, marker, key in (("title", '"ai-title"', "aiTitle"),
+                                       ("name", '"custom-title"', "customTitle")):
+                if result[field] is None and marker in line:
+                    try:
+                        obj = cache.parse(line) if cache else json.loads(line)
+                        result[field] = obj.get(key) if isinstance(obj, dict) else None
+                    except ValueError:
+                        pass
+            if result["title"] and result["name"]:
+                break
+        return result
+
+    def load(previous: dict, entry: dict) -> dict:
+        with path.open("rb") as fh:
+            raw_head = b"".join(line for _, line in zip(range(HEAD_LINES), fh))
+            size = fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, size - TAIL_BYTES))
+            raw_tail = fh.read()
+        if cache:
+            cache.stats["bytes_read"] += len(raw_head) + len(raw_tail)
+            result = cache.section(raw_head, "head", previous, entry, head)
+            if not result["unreadable"]:
+                result.update(cache.section(raw_tail, "tail", previous, entry, titles))
+        else:
+            result = head(raw_head)
+            if not result["unreadable"]:
+                result.update(titles(raw_tail))
+        return result
+
+    return cache.read(path, "claude", load) if cache else load({}, {})
 
 
-def _field(line: str, key: str) -> str | None:
-    try:
-        return json.loads(line).get(key)
-    except (ValueError, AttributeError):
-        return None
-
-
-def scan_claude(home: Path) -> tuple[list[dict], dict]:
+def scan_claude(home: Path, cache: MetadataCache | None = None) -> tuple[list[dict], dict]:
     root = home / ".claude" / "projects"
     if not root.is_dir():
         return [], {"status": "absent", "path": str(root)}
@@ -159,26 +303,10 @@ def scan_claude(home: Path) -> tuple[list[dict], dict]:
         rec = new_record("claude", path.stem)
         rec["transcript"] = str(path)
         rec["updated"] = iso_from_epoch(path.stat().st_mtime)
-        parsed_any = False
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
-            for _, line in zip(range(HEAD_LINES), fh):
-                try:
-                    obj = json.loads(line)
-                except ValueError:
-                    continue
-                parsed_any = True
-                if obj.get("cwd") and not rec["spawn_dir"]:
-                    rec["spawn_dir"] = obj["cwd"]
-                    rec["branch"] = obj.get("gitBranch")
-                if obj.get("timestamp") and not rec["created"]:
-                    rec["created"] = iso_normalize(obj["timestamp"])
-                if rec["spawn_dir"] and rec["created"]:
-                    break
-        if not parsed_any:
-            rec["unreadable"] = True
+        rec.update(claude_metadata(path, cache))
+        if rec["unreadable"]:
             records.append(rec)
             continue
-        rec["title"], rec["name"] = claude_title_and_name(path)
         entry = live.get(rec["id"])
         if entry:
             rec.update(live="yes", live_host="cli", pid=entry["pid"], tmux=entry.get("tmux"),
@@ -212,9 +340,11 @@ def codex_held_locks(lock_dir: Path) -> dict[str, int]:
     return held
 
 
-def codex_names(root: Path) -> dict[str, str]:
+def codex_names(root: Path, cache: MetadataCache | None = None) -> dict[str, str]:
     names = {}
     index = root / "session_index.jsonl"
+    if index.is_file() and cache:
+        return cached_codex_names(index, cache)
     if index.is_file():
         for line in index.read_text(errors="replace").splitlines():
             try:
@@ -226,27 +356,103 @@ def codex_names(root: Path) -> dict[str, str]:
     return names
 
 
-def scan_codex(home: Path, procs: dict[int, list[str]]) -> tuple[list[dict], dict, int]:
+def cached_codex_names(path: Path, cache: MetadataCache) -> dict[str, str]:
+    def load(previous: dict, entry: dict) -> dict:
+        state = previous.get("cursor", {})
+        names: dict[str, str] = {}
+        digest = hashlib.sha256()
+        offset = 0
+        old_signature = previous.get("signature", [])
+        before = entry["signature"]
+        with path.open("rb") as fh:
+            # Verify every committed prefix byte, not only the last line. A rewrite
+            # followed by growth must not look like an append to a stale cursor.
+            if (isinstance(state, dict) and isinstance(state.get("offset"), int)
+                    and 0 <= state["offset"] <= before[2]
+                    and old_signature[:2] == before[:2]
+                    and isinstance(state.get("names"), dict)):
+                remaining = state["offset"]
+                while remaining:
+                    chunk = fh.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    cache.stats["bytes_read"] += len(chunk)
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+                if not remaining and digest.hexdigest() == state.get("sha256"):
+                    names = dict(state["names"])
+                    offset = state["offset"]
+                    if before[2] > old_signature[2]:
+                        cache.stats["index_appends"] += 1
+                else:
+                    fh.seek(0)
+                    digest = hashlib.sha256()
+            for raw in fh:
+                cache.stats["bytes_read"] += len(raw)
+                complete = raw.endswith(b"\n")
+                if not complete:
+                    # A valid final JSON record without a newline is shown now,
+                    # but remains uncommitted so an append reparses that line.
+                    entry["cursor"] = {"offset": offset, "sha256": digest.hexdigest(),
+                                       "names": dict(names)}
+                try:
+                    obj = cache.parse(raw.decode("utf-8", "replace"))
+                    if isinstance(obj, dict) and obj.get("thread_name"):
+                        names[obj["id"]] = obj["thread_name"]
+                except (ValueError, KeyError, TypeError):
+                    pass
+                if complete:
+                    digest.update(raw)
+                    offset += len(raw)
+        if "cursor" not in entry:
+            entry["cursor"] = {"offset": offset, "sha256": digest.hexdigest(),
+                               "names": dict(names)}
+        return names
+
+    return cache.read(path, "codex-names", load)
+
+
+def codex_metadata(path: Path, cache: MetadataCache | None = None) -> dict:
+    def parse(raw: bytes) -> dict:
+        try:
+            obj = cache.parse(raw.decode("utf-8", "replace")) if cache else json.loads(raw.decode("utf-8", "replace"))
+            meta = obj["payload"]
+            return {"meta": meta} if isinstance(meta, dict) else {"unreadable": True}
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return {"unreadable": True}
+
+    def load(previous: dict, entry: dict) -> dict:
+        with path.open("rb") as fh:
+            raw = fh.readline()
+        if cache:
+            cache.stats["bytes_read"] += len(raw)
+            return cache.section(raw, "meta", previous, entry, parse)
+        return parse(raw)
+
+    return cache.read(path, "codex", load) if cache else load({}, {})
+
+
+def scan_codex(home: Path, procs: dict[int, list[str]],
+               cache: MetadataCache | None = None) -> tuple[list[dict], dict, int]:
     root = Path(os.environ["CODEX_HOME"]) if os.environ.get("CODEX_HOME") else home / ".codex"
     sessions = root / "sessions"
     if not sessions.is_dir():
         return [], {"status": "absent", "path": str(sessions)}, 0
     held = codex_held_locks(root / "thread-writer-locks")
-    names = codex_names(root)
+    names = codex_names(root, cache)
     records, hidden = [], 0
     for path in sorted(sessions.glob("*/*/*/rollout-*.jsonl")):
         match = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$", path.name)
         rec = new_record("codex", match.group(1) if match else path.stem)
         rec["transcript"] = str(path)
         rec["updated"] = iso_from_epoch(path.stat().st_mtime)
-        try:
-            with path.open("r", encoding="utf-8", errors="replace") as fh:
-                meta = json.loads(fh.readline())["payload"]
-            rec["id"] = meta.get("id", rec["id"])
-        except (ValueError, KeyError, TypeError, AttributeError):
+        metadata = codex_metadata(path, cache)
+        if metadata.get("unreadable"):
             rec["unreadable"] = True
             records.append(rec)
             continue
+        meta = metadata["meta"]
+        rec["id"] = meta.get("id", rec["id"])
         rec["spawn_dir"] = meta.get("cwd")
         rec["created"] = iso_normalize(meta.get("timestamp"))
         # source is "cli"/"exec", {"subagent": "review"}, or {"subagent": {"thread_spawn": {...}}}
@@ -453,7 +659,7 @@ def parse_since(value: str) -> str:
     return normalized
 
 
-def collect(tools: list[str]) -> tuple[list[dict], dict, dict, list[str]]:
+def collect(tools: list[str], cache: MetadataCache | None = None) -> tuple[list[dict], dict, dict, list[str]]:
     home = Path.home()
     procs = processes() if {"codex", "muse", "opencode"} & set(tools) else {}
     sessions, census, sources, failed = [], {}, {}, []
@@ -461,9 +667,9 @@ def collect(tools: list[str]) -> tuple[list[dict], dict, dict, list[str]]:
         hidden = 0
         try:
             if tool == "claude":
-                recs, src = scan_claude(home)
+                recs, src = scan_claude(home, cache)
             elif tool == "codex":
-                recs, src, hidden = scan_codex(home, procs)
+                recs, src, hidden = scan_codex(home, procs, cache)
             elif tool == "muse":
                 recs, src = scan_muse(home, procs)
             else:
@@ -481,7 +687,10 @@ def collect(tools: list[str]) -> tuple[list[dict], dict, dict, list[str]]:
 
 def cmd_list(args) -> int:
     tools = list(dict.fromkeys(args.tool)) if args.tool else list(TOOLS)
-    sessions, census, sources, failed = collect(tools)
+    cache = MetadataCache(Path(args.cache_dir), args.refresh_cache) if args.cache_dir else None
+    sessions, census, sources, failed = collect(tools, cache)
+    if cache:
+        cache.save()
     keep = []
     for rec in sessions:
         if rec.pop("_hidden", False) and not args.include_subagents:
@@ -495,7 +704,10 @@ def cmd_list(args) -> int:
     keep.sort(key=lambda r: r["updated"] or "", reverse=True)
 
     if args.output == "json":
-        print(json.dumps({"sessions": keep, "census": census, "sources": sources}, indent=2))
+        document = {"sessions": keep, "census": census, "sources": sources}
+        if cache:
+            document["cache"] = cache.report()
+        print(json.dumps(document, indent=2))
     else:
         for r in keep:
             print("\t".join(str(v) if v else "-" for v in (
@@ -503,6 +715,8 @@ def cmd_list(args) -> int:
         for tool, c in census.items():
             print(f"# census {tool}: listed={c['listed']} hidden_subagents={c['hidden_subagents']}"
                   f" unreadable={c['unreadable']} live={c['live']} source={sources[tool]['status']}")
+        if cache:
+            print("# cache " + json.dumps(cache.report(), sort_keys=True))
     if failed:
         message = "; ".join(sources[t]["message"] for t in failed)
         if args.output == "json":
@@ -528,6 +742,9 @@ def build_parser() -> argparse.ArgumentParser:
     lst.add_argument("--since", type=parse_since, help="only sessions active since <n>m|h|d|w or an ISO date")
     lst.add_argument("--include-subagents", action="store_true",
                      help="also list subagent and guardian threads (always counted)")
+    lst.add_argument("--cache-dir", help="reuse parsed metadata in this optional local cache directory")
+    lst.add_argument("--refresh-cache", action="store_true",
+                     help="rebuild parsed metadata (requires --cache-dir)")
     add_output_flags(lst, default=argparse.SUPPRESS)   # SUPPRESS keeps a root-level choice
     return parser
 
@@ -545,6 +762,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 0
+    if args.refresh_cache and not args.cache_dir:
+        parser.error("--refresh-cache requires --cache-dir")
     return cmd_list(args)
 
 
