@@ -2595,7 +2595,7 @@ normal interactive shell prompt instead of closing the tab (owner request 2026-1
 - [x] [P72-T03] Global rule in `smorin-bootstrap` `dotfiles/claude-CLAUDE.md`: agents launched in Rex always fall back to a shell (owner decision 2026-11-14, Q2.b); smorin-bootstrap `04e907f` on `docs/rex-agent-shell-fallback`
 - [x] [P72-T04] PR, merge with owner approval (#111, merge commit `1f2d225`; review fix `3f28d06` from a CodeRabbit nitpick)
 
-## [~] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.2)
+## [x] Project P73: session-move moves a Rex window between sessions (session 0.17.1 → 0.18.2)
 **Goal/Requirement**: Move a running agent conversation from one Rex session to another on the same
 computer (owner request 2026-11-14). Rex cannot move a window between sessions, so the skill recreates
 it: same agent, same conversation ID, same working directory, same window name, then the old window closes.
@@ -2681,7 +2681,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       read; a failed read counts as busy, never the quiet rule; only the `resume <id>` subcommand counts; a Codex
       caller without `CODEX_THREAD_ID` is refused. Known limit: inside Codex's sandbox `ps` reports no ancestry, so
       the variables decide. Bump session 0.18.1 → 0.18.2.
-- [ ] [P73-T16] Release session 0.18.2
+- [x] [P73-T16] Release session 0.18.2 (released in v0.35.0)
 
 ## [ ] Project P74: Muse reviews and audit triage through the official Claude Code Action (muse-github 0.6.0)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`

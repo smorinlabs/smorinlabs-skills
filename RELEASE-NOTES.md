@@ -1,5 +1,49 @@
 # Release Notes
 
+## v0.35.0 — 2026-11-15
+
+### Changed
+
+- `muse-github` 0.4.0 -> 0.5.0: `muse-github-setup` installs Muse reviews
+  through the official SHA-pinned Anthropic Claude Code Action, replacing the
+  removed OpenCode GitHub Action. The main model and every alias route to Meta
+  Muse. The generated workflows add automatic inline findings, `@muse` PR
+  follow-ups, inline discussion replies, progress tracking, and a reusable
+  review summary. Reviews get the runtime's read-only tools; repository edits
+  stay in the separately enabled manual fix workflow. The installer migrates
+  recognized legacy files, keeps existing model and fix choices and unrelated
+  OpenCode configuration, and refuses modified legacy files (#119).
+- `muse-github`: the setup docs record the completed migration of both
+  identified consumer repositories, with live review and follow-up evidence,
+  remaining limits, and rollback guidance (#123).
+
+### Fixed
+
+- `muse-github` 0.5.0 -> 0.5.1: fixes from the live pilot's review. The
+  follow-up helper no longer refuses older PRs whose comparison base is behind
+  the default branch; an advanced PR head is reported even when the Action
+  fails; exact tracked data fixtures such as `x.env.json` are readable; runtime
+  permission profiles reject environment, provider, and command-helper fields;
+  each follow-up comment gets its own run; the installer updates exact 0.5.0
+  output in place (#120).
+- `muse-github` 0.5.1 -> 0.5.2: reviews and follow-ups get 24 turns instead of
+  12, with the final turns reserved for the summary, because the first live
+  review ran out of turns before publishing it. The finalizer logs read-only
+  tool invocation and result counts, without arguments or results (#121).
+- `muse-github` 0.5.2 -> 0.5.3: an inline-discussion follow-up updates its
+  existing reply instead of also opening a new thread. A successful run that
+  never called the comment updater publishes its final result to one new,
+  read-back-verified comment, instead of leaving only the initial progress
+  note. The docs record that native WebSearch can fail against Meta's
+  `max_uses` handling (#122).
+- `session` 0.18.1 -> 0.18.2: `session-move` review fixes. The nearest agent
+  among the helper's process ancestors names the caller, so an agent started
+  under Codex no longer picks its parent's tab by an inherited
+  `CODEX_THREAD_ID`; a Codex caller without `CODEX_THREAD_ID` is refused. Only
+  a `resume <id>` subcommand identifies a Codex conversation. A transcript
+  that was replaced is read from its start, and a failed read counts as busy,
+  so the old tab never closes mid-turn (#118).
+
 ## v0.34.0 — 2026-11-14
 
 ### Added

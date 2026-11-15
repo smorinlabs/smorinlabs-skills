@@ -67,6 +67,7 @@ def test_preserves_established_model_and_runtime_copy(tmp_path, model):
     changes = installer.triage_plan(tmp_path, "example-org", migrate_opencode=True)
     policy = json.loads(changes[installer.TRIAGE_POLICY])
     assert policy["model"] == model
+    assert f"The selected model is {installer.MODELS[model]} ({model})." in changes[".github/muse-audit-triage/NOTICE"]
     assert changes[".github/muse-audit-triage/runtime.py"] == installer.render(
         (installer.TEMPLATES / ".github/scripts/muse_ci.py").read_text(), "example-org", model
     )

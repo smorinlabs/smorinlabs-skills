@@ -67,6 +67,13 @@ paths and marked instruction/ownership sections through the normal review proces
   bounded; it is not an OS sandbox and does not execute project tests with the
   model credential present.
 
+An existing repair branch stops preparation before model use, even if its PR was
+never created. Inspect that branch and the failed publication run, then recover
+its PR through the normal authorized process. Do not blindly rerun the paid job,
+force-push a replacement commit, or delete an existing repair branch. A branch
+created after the preflight check still makes a conflicting non-force push fail
+safely; the preflight check is not an atomic reservation.
+
 ## Gates and evidence
 
 Gate A requires meaningful installer/helper tests, real CLI permission probes,

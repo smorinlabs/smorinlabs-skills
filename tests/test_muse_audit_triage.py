@@ -86,7 +86,8 @@ def test_no_changes_reports_no_publication(prepared):
     assert 'false' in output.read_text()
 
 
-def test_prepare_freezes_historical_audited_revision_using_current_trusted_code(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ref_state", ["none", "similar", "existing", "malformed"])
+def test_prepare_freezes_historical_audited_revision_using_current_trusted_code(tmp_path, monkeypatch, ref_state):
     root = tmp_path / 'repo'
     root.mkdir()
     git(root, 'init', '-q', '-b', 'main')
@@ -120,13 +121,25 @@ def test_prepare_freezes_historical_audited_revision_using_current_trusted_code(
              'workflow_run': {'id': 12, 'name': 'weekly-audit', 'conclusion': 'failure', 'event': 'schedule', 'head_branch': 'main', 'head_sha': base}}
     eventfile = tmp_path / 'event.json'
     eventfile.write_text(json.dumps(event))
+    calls, downloads = [], []
     class API:
         def get(self, path):
+            calls.append(path)
             if '/pulls?' in path: return []
-            if '/jobs?' in path: return {'jobs': [{'id': 10, 'name': 'docs-linkcheck', 'conclusion': 'failure'}]}
+            if '/git/matching-refs/' in path:
+                if ref_state == 'existing': return [{'ref': 'refs/heads/bot/weekly-audit-12'}]
+                if ref_state == 'similar': return [{'ref': 'refs/heads/bot/weekly-audit-120'}]
+                if ref_state == 'malformed': return {'error': 'unexpected'}
+                return []
+            if '/jobs?' in path:
+                return {'jobs': [{'id': i, 'name': f'other-{i}', 'conclusion': 'failure'} for i in range(1, 6)] +
+                                [{'id': 20, 'name': 'docs-linkcheck', 'conclusion': 'failure'}]}
             raise AssertionError(path)
     monkeypatch.setattr(triage, 'GitHub', lambda token: API())
-    monkeypatch.setattr(triage, 'download_logs', lambda *args: '(x: line 1) broken https://example.invalid - 404')
+    def download(url, *args):
+        downloads.append(url)
+        return '(x: line 1) broken https://example.invalid - 404'
+    monkeypatch.setattr(triage, 'download_logs', download)
     monkeypatch.setattr(triage, 'guard_module', lambda: guard)
     monkeypatch.setattr(triage, '__file__', str(scripts / 'muse_audit_triage.py'))
     runner = tmp_path / 'runner'
@@ -135,7 +148,15 @@ def test_prepare_freezes_historical_audited_revision_using_current_trusted_code(
     env = {'GITHUB_WORKSPACE': str(root), 'GITHUB_EVENT_NAME': 'workflow_run', 'GITHUB_EVENT_PATH': str(eventfile),
            'GITHUB_REPOSITORY': 'org/repo', 'MUSE_TRIAGE_TRUSTED_SHA': current, 'RUNNER_TEMP': str(runner),
            'GITHUB_OUTPUT': str(out), 'GITHUB_ENV': str(environment)}
+    if ref_state in ('existing', 'malformed'):
+        with pytest.raises(triage.RefusalError, match='already exists|verify existing triage branches'):
+            triage.prepare(env)
+        assert not downloads and not any('/jobs?' in path for path in calls)
+        assert not list(runner.iterdir())
+        assert git(root, 'rev-parse', 'HEAD') == current
+        return
     triage.prepare(env)
+    assert len(downloads) == 5 and '/jobs/20/logs' in downloads[0]
     assert git(root, 'rev-parse', 'HEAD') == base
     state_paths = list(runner.glob('audit-triage-*/state.json'))
     state = json.loads(state_paths[0].read_text())
@@ -236,5 +257,36 @@ def test_guard_loading_does_not_write_bytecode_into_trusted_checkout(tmp_path, m
         loaded = triage.guard_module()
         assert loaded.READ_TOOLS
         assert not (config / '__pycache__').exists()
+    finally:
+        triage.guard_module.cache_clear()
+
+
+def test_installed_helper_never_loads_unrelated_sibling_runtime(tmp_path, monkeypatch):
+    scripts = tmp_path / '.github/scripts'
+    config = tmp_path / '.github/muse-audit-triage'
+    scripts.mkdir(parents=True)
+    config.mkdir(parents=True)
+    (scripts / 'runtime.py').write_text('raise AssertionError("unrelated sibling executed")\n')
+    (config / 'runtime.py').write_text('SOURCE = "managed"\n')
+    monkeypatch.setattr(triage, '__file__', str(scripts / 'muse_audit_triage.py'))
+    triage.guard_module.cache_clear()
+    try:
+        assert triage.guard_module().SOURCE == 'managed'
+        (config / 'runtime.py').unlink()
+        triage.guard_module.cache_clear()
+        with pytest.raises(OSError):
+            triage.guard_module()
+    finally:
+        triage.guard_module.cache_clear()
+
+
+def test_copied_private_helper_loads_sibling_runtime(tmp_path, monkeypatch):
+    private = tmp_path / ('audit-triage-' + 'a' * 32)
+    private.mkdir()
+    (private / 'runtime.py').write_text('SOURCE = "copied"\n')
+    monkeypatch.setattr(triage, '__file__', str(private / 'muse_audit_triage.py'))
+    triage.guard_module.cache_clear()
+    try:
+        assert triage.guard_module().SOURCE == 'copied'
     finally:
         triage.guard_module.cache_clear()
