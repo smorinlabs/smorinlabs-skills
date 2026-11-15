@@ -1,13 +1,15 @@
 # Muse GitHub Action migration validation
 
-Validation snapshot: November 15, 2026. Muse GitHub **0.5.3** is delivered.
-Both identified Action consumers are migrated, activated, and live-verified.
-The first pilot passed before the second repository was migrated.
+Validation snapshot: November 15, 2026. Muse GitHub **0.6.0** is delivered.
+The original two review-Action consumers are migrated, activated, and live-verified.
+The three additional audit-job installations are also migrated, with each existing
+activation state preserved. The live audit pilot passed before the other audit
+consumers were migrated incrementally. One audit consumer remains inactive;
+installation does not imply model execution there.
 
-Scope correction: that delivery covered direct OpenCode Action review workflows.
-Three existing audit-triage jobs invoking `opencode run` were initially excluded.
-They are now included in the authorized migration and remain pending until the
-separate audit-triage skill checks, live pilot, and incremental rollout pass.
+The original 0.5.3 delivery covered direct OpenCode Action review workflows and
+incorrectly excluded three audit jobs invoking `opencode run`. The continuation
+below records the completed broader scope and its separate acceptance evidence.
 
 Source [PR #122](https://github.com/smorinlabs/smorinlabs-skills/pull/122) merged as
 [`28ec8c00a9581b1e7d7c813ebba13ba294a67930`](https://github.com/smorinlabs/smorinlabs-skills/commit/28ec8c00a9581b1e7d7c813ebba13ba294a67930).
@@ -15,7 +17,7 @@ The delivered skill runs Meta Muse through the official Anthropic Claude Code
 Action. It preserves the installed model, root OpenCode configuration, and
 optional fix-workflow selection while replacing recognized managed files.
 
-## Runtime and source validation
+## Original review runtime and source validation, version 0.5.3
 
 | Item | Recorded result |
 |---|---|
@@ -148,6 +150,97 @@ The following limitations remain part of the result:
   reported results. They do not establish semantic correctness of tool output.
   Local permission probes likewise do not establish live provider behavior.
 
+## Audit-triage continuation, version 0.6.0
+
+Source [PR #124](https://github.com/smorinlabs/smorinlabs-skills/pull/124)
+merged as `1a56c966f0b27ceb9ed0247da427b14fbb890b3f`; the existing installed
+skill placement was refreshed to that revision. This extends the installer to
+recognized audit jobs invoking `opencode run`, separately from ordinary reviews.
+Existing documentation repair scope, model, credential scope, and activation
+switches are preserved. Reviews do not gain write access.
+
+The source CI suite passed **1,654 tests with 2 skips**. All **67** focused
+installer/core/URL tests passed, along with four workflow-template syntax checks,
+manifest checks, and Claude Code/Codex deep loads. Real CLI 2.1.325 probes against
+a loopback mock verified permitted documentation edits and denied shell,
+out-of-scope, and unsafe-symlink writes. Those probes establish permission
+behavior, not live provider behavior. Sol and Terra independently reviewed the
+shared changes; Terra, Sol, and Luna prepared the three consumer migrations.
+
+CodeRabbit identified four shared-source defects: runtime-module selection,
+DNS resolution changing between validation and connection, failure-log ordering,
+and retries after a successful branch push but failed PR creation. All four were
+verified, fixed or mitigated with regressions, answered, and resolved before merge.
+The retry mitigation stops before model use when the exact remote branch exists;
+recovery requires inspecting the existing branch rather than generating another
+repair. Follow-up CodeRabbit reviews were rate-limited and Greptile was expired.
+Those unavailable reviews are not counted as passing reviews.
+
+### Live audit pilot
+
+Lost-sessions [PR #37](https://github.com/smorinlabs/lost-sessions/pull/37)
+installed the migration at `00d11b180ee7b030c2e0b31176a22e8510071832`.
+No eligible historical failed documentation audit was available. A temporary,
+manual-only harness supplied explicitly synthetic failed-run metadata and logs;
+the Action, Muse model, scoped edit, prepublication validation, repair PR, and
+URL verification were real. No deliberately broken fixture entered the default
+branch.
+
+| Check | Verified evidence |
+|---|---|
+| Live repair and publication | [Run 43745671254](https://github.com/smorinlabs/lost-sessions/actions/runs/43745671254) used CLI 2.1.325 and `muse-spark-1.3-contributor`, repaired only `docs/source/_muse_triage_acceptance.md`, and passed validation before commit/push/PR creation. |
+| Output and URL verification | [PR #38](https://github.com/smorinlabs/lost-sessions/pull/38) contained only the test document. Its [URL report](https://github.com/smorinlabs/lost-sessions/pull/38#issuecomment-6899023989) recorded HTTP 200 for `https://example.com/`. The PR was closed without merging. |
+| Production rejection | [Run 43745825675](https://github.com/smorinlabs/lost-sessions/actions/runs/43745825675) rejected the synthetic run with `Not a weekly-audit run`; credential/model/publication steps were skipped. This expected failed job is a passing rejection test. |
+| Harness removal | [PR #39](https://github.com/smorinlabs/lost-sessions/pull/39) merged as `534b4a3c750a5f25d124fd30e156d72169d77666`. All three temporary files and their exact execution policy were removed. Production policies were retained. |
+| Final readback | All six generated audit files matched the installed skill. `MUSE_AUDIT_TRIAGE_ENABLED=true`, the contributor model, root OpenCode config, and all existing review/follow-up files were preserved. |
+
+The pilot's full local checks passed with **444 Python tests** and **20 Bun tests**;
+three Python tests were skipped and three deselected. After removing the fifteen
+temporary harness tests, the cleanup passed **429 Python tests** and **20 Bun
+tests**, with the same skips/deselections. Its remote project checks and Muse
+review passed. The large installation PR exceeded the existing Muse review
+diff-size limit; that guard was preserved and its refusal was not called a review.
+
+### Incremental audit rollout
+
+Py-launch-blueprint [PR #608](https://github.com/smorinlabs/py-launch-blueprint/pull/608)
+merged through its required merge queue as
+`cfdfb0789cf7065cdac4f9b4c7046e1cfd186a2b`. Required checks and the queue's CI
+passed without bypassing protection. Local checks passed **408 Python tests**
+and **20 JavaScript tests**, with six Python skips and five deselections. All
+**67** targeted audit tests passed. Press verification and an in-memory test
+of its actual compiled transformation confirmed the new policy's organization
+changes to the destination owner while its model stays unchanged.
+
+[Run 43747079409](https://github.com/smorinlabs/py-launch-blueprint/actions/runs/43747079409)
+replayed the real scheduled audit `42625355979`. Its documentation check had
+passed and only its dependency audit failed. Preparation reported
+`No docs failure in run 42625355979; agent run skipped`; the credential, model,
+and publication steps were skipped. This verifies the production skip path,
+not another live model repair. The existing `MUSE_CI_ENABLED=true` was preserved.
+CodeRabbit remained pending at the bounded pre-queue review gate; Codex reported
+no findings and Claude's explicitly limited review reported no issues. Greptile
+was unavailable. No open inline review threads existed at that gate.
+
+The third, private consumer was then installed and read back against the same
+six generated templates. Its local checks passed **397 Python tests** and
+**20 Bun tests**, with six Python skips and four deselections; **66** targeted
+audit tests passed. A manual default-branch dispatch produced a skipped triage
+job, confirming its existing inactive state. No credential was added and no
+activation or model-tier choice changed. This is installation/inactivity evidence,
+not live model acceptance. Repository identity, exact commits, run links, and
+private CI limitations are retained in the private rollout ledger.
+
+Final readbacks found no executable OpenCode invocation in the migrated GitHub
+workflows. Existing ordinary review/follow-up files and unrelated configuration
+were preserved. This continuation covers the three specifically authorized
+audit consumers; it is not a fresh organization-wide inventory.
+
+Audit events receive the helper's frozen failure bundle: the pinned Action does
+not instantiate its GitHub CI MCP server outside PR contexts. Read-only tools
+remain permitted, including native WebSearch with the existing documented Meta
+compatibility limitation. Runtime permissions are not an OS sandbox.
+
 ## Rollback
 
 Follow the existing [legacy cutover and rollback procedure](../../plugins/muse-github/skills/muse-github-setup/references/acceptance.md#legacy-cutover-and-rollback).
@@ -155,7 +248,8 @@ Rollback includes the reviewed installation change and any deliberately changed
 workflow-path policies or activation value. Preserve unrelated configuration and
 avoid running both workflow generations together.
 
-Both identified consumers passed their rollout gates. Keep the test PRs closed
+Both original review consumers and the three audit installations passed their
+applicable rollout gates. Keep the test PRs closed
 without merging and retain their run/comment evidence. Refresh inventory and
 repeat the relevant validation before extending this result to new repositories
 or a different Action/runtime revision.

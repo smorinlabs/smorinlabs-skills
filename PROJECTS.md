@@ -2683,7 +2683,7 @@ it: same agent, same conversation ID, same working directory, same window name, 
       the variables decide. Bump session 0.18.1 → 0.18.2.
 - [x] [P73-T16] Release session 0.18.2 (released in v0.35.0)
 
-## [ ] Project P74: Muse reviews and audit triage through the official Claude Code Action (muse-github 0.6.0)
+## [x] Project P74: Muse reviews and audit triage through the official Claude Code Action (muse-github 0.6.0)
 **Goal**: Replace the deprecated OpenCode GitHub Action in `muse-github-setup`
 with the official Anthropic Action while preserving Meta Muse routing. Add inline
 findings, member-triggered PR follow-ups, verified inline replies, reusable summaries,
@@ -2702,7 +2702,7 @@ eligible organization repositories in small verified batches.
 - [x] [P74-T06] Prove automatic review, inline finding, top-level and inline follow-ups, progress/summary reuse, updates, and guarded failures on the live pilot (smorinlabs/lost-sessions#34, closed unmerged).
 - [x] [P74-T07] Migrate the remaining eligible repository in a batch of one and verify review plus inline follow-up (smorinlabs/bitrot-sanitation-skill#5; test #6 closed unmerged).
 
-### Validation status
+### Review validation, version 0.5.3
 Version 0.5.3 landed in #122 and its installed source placement was verified.
 The source CI suite passed 1,587 tests with 2 skips; the focused Muse suite passed
 286 tests. All three workflow templates passed actionlint, and Claude Code,
@@ -2725,10 +2725,11 @@ optional fix workflow, which was not enabled on either migrated consumer.
 
 The migration also includes existing Muse documentation audit jobs using
 `opencode run`. The previous completion statement covered direct Action reviews
-only. This continuation remains open until the three audit-triage consumers are
-migrated and verified.
+only. All three audit-triage installations are now migrated and verified within
+their existing activation state. The live pilot passed before the remaining
+consumers were migrated incrementally; the inactive consumer remains inactive.
 
 - [x] [P74-T11] Implement a separate audit-triage installer path and shared trusted runtime/workflow; preserve read-only review behavior and existing documentation repair scope.
 - [x] [P74-T12] Validate installer preservation/idempotence, runtime permissions, prepublication path checks, workflow lint, manifests, skill loading, and independent review.
-- [ ] [P74-T13] Land/install the skill update and prove one bounded live audit-repair pilot.
-- [ ] [P74-T14] Migrate and verify the remaining two audit-triage consumers incrementally; record exact evidence and limitations.
+- [x] [P74-T13] Land/install 0.6.0 in #124 and prove one bounded live audit-repair pilot (lost-sessions run 43745671254; generated PR #38 closed unmerged; temporary harness removed in #39).
+- [x] [P74-T14] Migrate the remaining audit consumers incrementally; verify the real no-documentation-failure skip in py-launch-blueprint#608 and preserved inactivity in the private consumer. Exact private evidence remains in the private rollout ledger.
