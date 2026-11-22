@@ -1,6 +1,6 @@
 ---
 name: session-loose-ends
-description: Sweep the session for loose ends such as uncommitted or unpushed work, stale worktrees, zombie background jobs, unkept promises, and tracking drift. Reports each with a recommendation and cleans up only what the user approves. Use when the user asks "any loose ends?", "anything to clean up?", or "tie this off". Not for a full recap (session-recap).
+description: Sweep the session for loose ends such as uncommitted or unpushed work, stale worktrees, zombie background jobs, unkept promises, and tracking drift. Reports each with a recommendation and cleans up only what the user approves. Use when the user asks "any loose ends?", "anything to clean up?", or "tie this off". Not for a full recap (session-recap) or for cleaning up objects registered in brot (brot).
 ---
 
 # session-loose-ends
