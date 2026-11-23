@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.36.0 — 2026-11-22
+
+### Added
+
+- `session` 0.18.2 -> 0.19.0: new skill `session-map`. It keeps a saved map of
+  projects and sessions, updates it incrementally, and renders a standalone
+  HTML dashboard (#127).
+
+### Changed
+
+- `muse-github` 0.5.3 -> 0.6.0: existing audit triage now runs through the
+  Claude Code Action (#124). The setup docs record the migration's
+  acceptance (#126).
+- `session` 0.19.0 -> 0.19.1: the `session-loose-ends` description now leaves
+  cleanup of objects registered in brot to the `brot` skill (#128).
+
 ## v0.35.0 — 2026-11-15
 
 ### Changed
