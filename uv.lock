@@ -13,8 +13,8 @@ wheels = [
 
 [[package]]
 name = "harness-kit"
-version = "0.4.0"
-source = { git = "https://github.com/smorinlabs/harness-kit?tag=v0.4.0#b23305fa6c4a5067c4adb07e31d9cf05dd1cec56" }
+version = "0.6.0"
+source = { git = "https://github.com/smorinlabs/harness-kit?tag=v0.6.0#9b7150531ffc6af0b8d999ccc98ca77060bc9c45" }
 
 [[package]]
 name = "iniconfig"
@@ -130,7 +130,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "harness-kit", git = "https://github.com/smorinlabs/harness-kit?tag=v0.4.0" },
+    { name = "harness-kit", git = "https://github.com/smorinlabs/harness-kit?tag=v0.6.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

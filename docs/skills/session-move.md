@@ -10,9 +10,10 @@ old one.
 What stays the same:
 
 - **The agent.** A Claude Code window reopens in Claude Code, a Codex window in
-  Codex, a Muse window in Muse.
+  Codex, a Muse window in Muse, an Antigravity (`agy`) window in Antigravity.
 - **The conversation.** It is resumed by its ID (`claude --resume <id>`,
-  `codex resume <id>`, `muse resume <id>`), never forked into a copy.
+  `codex resume <id>`, `muse resume <id>`, `agy --conversation <id>`), never
+  forked into a copy.
 - **The working directory**, read from the running agent.
 - **The window name.** A name Rex generated itself, such as `Window 1a2b3c4d`,
   is not copied; Rex names the new window.
@@ -38,7 +39,7 @@ tab; it does so only when exactly one Rex app is connected and that app's
 Remote Control setting allows it. When it moves a
 different window, it stays put, waits for the conversation to come up in the
 destination, and reports the check: the same agent is running, and (for Claude
-Code and Muse) the agent's own record shows the same conversation ID.
+Code, Muse, and Antigravity) the agent's own record shows the same conversation ID.
 
 Every decision that can be checked is made by the bundled stdlib
 `scripts/session-move` helper: what can move, the launch command, and the
@@ -64,9 +65,9 @@ computer (`session-handoff`), and not copying the conversation into a worktree
 |---|---|
 | The window runs on another computer | A Rex session can span computers; moving across them is out of scope. |
 | The window has more than one pane | Only a single-pane window can be recreated faithfully. |
-| The window is not running Claude Code, Codex, or Muse | There is no conversation to resume. |
+| The window is not running Claude Code, Codex, Muse, or Antigravity | There is no conversation to resume. |
 | Another window's agent is mid-turn, or has a background shell running | The move would cut it off. |
-| The conversation cannot be identified | For example, several live Codex conversations started in one directory; name one with `--conversation`. |
+| The conversation cannot be identified | For example, several live Codex conversations started in one directory, or a bare `agy` window without `--conversation`; name one with `--conversation`. |
 
 **Limits:**
 
@@ -74,20 +75,22 @@ computer (`session-handoff`), and not copying the conversation into a worktree
   repeated on resume.
 - Muse prints a warning on resume that its previous run ended without a clean
   shutdown. The conversation is intact.
-- For Codex and Muse, the waiting program reads the turn-end record in the
-  transcript. Only a transcript with no turn records falls back to six quiet
-  seconds.
+- For Codex, Muse, and Antigravity, the waiting program reads the turn-end
+  record in the transcript (`task_complete`, Muse's run `terminal`, Antigravity
+  `PLANNER_RESPONSE` with `status: "DONE"` and no `tool_calls`). Only a
+  transcript with no turn records falls back to six quiet seconds.
 - Under Codex, the skill finds its own tab by the conversation ID, because the
   Rex IDs that Codex passes to commands belong to another tab.
-- Codex and Muse ask for approval before each helper command, because the
-  helper needs the Rex socket. In a Codex folder that is not trusted, the move
-  cannot run.
+- Codex, Muse, and Antigravity sandboxes ask for approval before each helper
+  command, because the helper needs the Rex socket. In a Codex folder that is
+  not trusted, the move cannot run.
 - If the source window was its session's only window, that session is left
   empty and the skill says so.
 
 **Requires:** Rex with the `rex` CLI, `uv`, the agent CLI being moved
-(`claude`, `codex`, or `muse`), and the sibling `session-agent-list` skill,
-whose inventory script identifies Codex and Muse conversations.
+(`claude`, `codex`, `muse`, or `agy`), and the sibling `session-agent-list`
+skill, whose inventory script identifies Codex, Muse, and Antigravity
+conversations (Antigravity self-moves also read `$ANTIGRAVITY_CONVERSATION_ID`).
 
 ## Install
 
@@ -104,8 +107,14 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
 For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location). **Muse and OpenCode** both load skills from
+skills location). **Muse, OpenCode, and Antigravity** also load skills from
 `~/.agents/skills`, so the same dev symlink serves them.
 
 ## Example session

@@ -41,7 +41,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-AGENTS = ("claude", "codex", "muse")
+AGENTS = ("claude", "codex", "muse", "agy")
 HIT_THRESHOLD = 3            # transcript path hits that count as "working in this repo"
 TRANSCRIPT_TAIL = 300_000    # bytes read from the end of each live agent's transcript
 VALUE_FLAGS = ("--session", "--name", "--repo")
@@ -89,7 +89,7 @@ def parse_args(argv: list[str]) -> dict:
         i += 1
 
     if len(agents) > 1:
-        raise SpinoffArgError("pass at most one agent flag (--claude, --codex, --muse)")
+        raise SpinoffArgError("pass at most one agent flag (--claude, --codex, --muse, --agy)")
     if new and out["session"]:
         raise SpinoffArgError("--new and --session conflict: choose a new session or an existing one")
     if out["name"] and out["session"]:
@@ -251,7 +251,8 @@ def build_commands(plan: dict) -> dict:
     shell = launch_shell(os.environ.get("SHELL"))
     # The agent runs inside the login shell, which becomes an interactive prompt when the
     # agent exits, so quitting the agent leaves the tab open at a shell instead of closing it.
-    agent_argv = [shell, "-ilc", SHELL_FALLBACK, shell, plan["agent"], plan["brief"]]
+    agent_cmd = ["agy", "-i", plan["brief"]] if plan["agent"] == "agy" else [plan["agent"], plan["brief"]]
+    agent_argv = [shell, "-ilc", SHELL_FALLBACK, shell, *agent_cmd]
     if plan["placement"] == "new":
         launch = ["rex", "new", plan["name"], "--window", plan["tab_label"],
                   "-c", launch_dir, "--shell=none", "--json", "--", *agent_argv]

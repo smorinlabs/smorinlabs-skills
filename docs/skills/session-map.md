@@ -63,9 +63,10 @@ supporting evidence; the skill does not execute cleanup.
 ## Sources and requirements
 
 Python 3.11 or newer on macOS or Linux runs the bundled helper using the standard library.
-Native Claude Code, Codex, Muse, and OpenCode discovery comes from the sibling
-`session-agent-list` collector. Manager-specific collection requires the
-corresponding installed CLI. Missing sources appear as coverage gaps.
+Native Claude Code, Codex, Muse, OpenCode, and Antigravity (`agy`) discovery
+comes from the sibling `session-agent-list` collector. Manager-specific
+collection requires the corresponding installed CLI. Missing sources appear as
+coverage gaps.
 
 Manager, agent, and host remain separate: a Claude Code session inside Herdr
 inside Rex is not three independent conversations. Loaded child threads
@@ -99,6 +100,12 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
+Antigravity (`agy`) plugin installation:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
 For development, start in the parent directory of your existing
 `smorinlabs-skills` clone. If the repository is not downloaded, clone it first
 with `git clone https://github.com/smorinlabs/smorinlabs-skills`.
@@ -111,7 +118,7 @@ ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-map" "$HOME/.clau
 ln -s "$(pwd)/smorinlabs-skills/plugins/session/skills/session-agent-list" "$HOME/.claude/skills/session-agent-list"
 ```
 
-For Codex, Muse, or OpenCode, use `~/.agents/skills` instead of
+For Codex, Muse, OpenCode, or Antigravity, use `~/.agents/skills` instead of
 `~/.claude/skills` for both placements. Direct-copy installations likewise need
 both skill directories or an available `session-inventory` executable on PATH.
 The skill resolves its helper and sibling references through the installed

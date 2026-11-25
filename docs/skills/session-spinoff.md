@@ -6,8 +6,9 @@ don't want it to derail what you're doing or fill your context window.
 `session-spinoff` writes a self-contained brief for that idea (using
 `session-handoff`'s content contract, scoped to the new idea), finds the target
 repo (`repo-finder`), creates a worktree from `origin/<default-branch>`, and
-launches a fresh Claude Code, Codex, or Muse agent in a Rex tab with the brief
-as its first prompt. Your current session is never modified.
+launches a fresh Claude Code, Codex, Muse, or Antigravity (`agy -i`) agent in a
+Rex tab with the brief as its first prompt. Your current session is never
+modified.
 
 Placement is always your choice. A read-only snapshot sorts your Rex sessions
 into tiers from facts — tier 1 has a tab that started in the target repo or one
@@ -37,7 +38,7 @@ idea in its own session. NOT continuing the current work elsewhere
 moving a running conversation to another Rex session (`session-move`).
 
 **Arguments:** `[idea] [--new | --session <label|id>] [--name <session-name>]
-[--repo <name|path>] [--claude | --codex | --muse] [--dry-run]`
+[--repo <name|path>] [--claude | --codex | --muse | --agy] [--dry-run]`
 
 | Argument | Skips |
 |---|---|
@@ -46,14 +47,14 @@ moving a running conversation to another Rex session (`session-move`).
 | `--session <label\|id>` | The placement question; adds a tab to that session |
 | `--name <session-name>` | The name confirmation; implies `--new` |
 | `--repo <name\|path>` | Inferring the target repo |
-| `--claude` / `--codex` / `--muse` | The agent question |
+| `--claude` / `--codex` / `--muse` / `--agy` | The agent question |
 | `--dry-run` | All writes; prints the brief and the commands |
 
 Refused before anything runs: `--new` with `--session`, `--name` with
 `--session`, more than one agent flag.
 
 **Requires:** Rex with the `rex` CLI, `git`, `uv`, and the
-agent CLI you launch (`claude`, `codex`, or `muse`).
+agent CLI you launch (`claude`, `codex`, `muse`, or `agy`).
 
 ## Install
 
@@ -70,8 +71,14 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
 For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location). **Muse and OpenCode** both load skills from
+skills location). **Muse, OpenCode, and Antigravity** also load skills from
 `~/.agents/skills`, so the same dev symlink serves them.
 
 ## Example session

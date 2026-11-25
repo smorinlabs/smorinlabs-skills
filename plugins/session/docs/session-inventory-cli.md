@@ -10,11 +10,11 @@
 | **Shape** | Single-file uv-shebang Python script (argparse), stdlib only |
 
 Purpose: one read-only inventory of the agent sessions on this machine across
-Claude Code, Codex, Muse, and OpenCode — identity, session name, spawn
-directory, times, lineage, whether the session is running right now, and the
-resume command a reader may safely run. The `session-agent-list` skill renders
-cards from this output; judgment work (titles from turns, handoff evidence,
-end-state classification) stays with the skill.
+Claude Code, Codex, Muse, OpenCode, and Antigravity (`agy`) — identity, session
+name, spawn directory, times, lineage, whether the session is running right now,
+and the resume command a reader may safely run. The `session-agent-list` skill
+renders cards from this output; judgment work (titles from turns, handoff
+evidence, end-state classification) stays with the skill.
 
 ## Command tree
 
@@ -40,7 +40,7 @@ Global:
 
 | Long | Type | Default | Notes |
 |---|---|---|---|
-| `--tool` | enum `claude\|codex\|muse\|opencode`, repeatable | all four | restrict to these tools (R3.7) |
+| `--tool` | enum `claude\|codex\|muse\|opencode\|agy`, repeatable | all five | restrict to these tools (R3.7) |
 | `--live` | flag | off | only sessions that may be running: `live` is `yes`, or `unknown` (rendered `live?`) |
 | `--since` | `<n>m\|h\|d\|w` or ISO date | none | only sessions updated at or after this point |
 | `--include-subagents` | flag | off | also list subagent and guardian threads (hidden by default, always counted in the census) |
@@ -65,14 +65,15 @@ collector creates no cache and keeps its existing output shape. The cache
 contains metadata such as names and working directories, so it belongs in the
 user's private map/cache directory rather than a public repository.
 
-Unchanged Claude and Codex JSONL files need only a file-stat check. The
-fingerprint includes device, inode, size, nanosecond modification time, and
-nanosecond change time. Changed Claude transcripts reread their bounded head
-and title/name tail; changed Codex transcripts reread the first metadata line.
-Hashes let unchanged regions reuse their parsed values. Other appended message
-content is not parsed because this collector supplies session metadata, not
-conversation assessments. Truncation and replacement trigger current metadata
-reads instead of retaining the former file's fields.
+Unchanged Claude, Codex, and Antigravity JSONL files need only a file-stat
+check. The fingerprint includes device, inode, size, nanosecond modification
+time, and nanosecond change time. Changed Claude transcripts reread their
+bounded head and title/name tail; changed Codex transcripts reread the first
+metadata line; changed Antigravity transcripts reread the bounded first line for
+`created_at`. Hashes let unchanged regions reuse their parsed values. Other
+appended message content is not parsed because this collector supplies session
+metadata, not conversation assessments. Truncation and replacement trigger
+current metadata reads instead of retaining the former file's fields.
 
 The Codex names index uses a complete-line byte cursor. Before reusing a cursor,
 the collector verifies the entire committed prefix against its saved hash.
@@ -98,11 +99,20 @@ results after collection and does not itself enable caching.
 | `codex` | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` | `thread_name` in `$CODEX_HOME/session_index.jsonl` | — | `$CODEX_HOME/thread-writer-locks/<uuid>.lock` held open by a process (one `lsof` call) |
 | `muse` | `session-index.db` table `sessions` | canonical claim in `session-names.db` (see below), else `session_name` | `title` | `<session_dir>/.session.lock`: same host, PID alive, process is `muse` or its versioned `muse-bin-*` binary |
 | `opencode` | `opencode.db` table `session_v2` (newer OpenCode releases), plus `session` rows missing from it (`legacy_only`); else `session` | `slug` | `title` | a running `opencode` process: `--session <id>` in its argv, else its working directory (see `opencode_directory_liveness`) |
+| `agy` | `~/.gemini/antigravity-cli/conversation_summaries.db` table `conversation_summaries` + line 1 of `brain/<id>/.system_generated/logs/transcript.jsonl` (`created_at`) | — | `title` (fallback `preview`) | a running interactive `agy` process (excluding non-TUI subcommands): `--conversation`/`--resume`/`-r <id>` in its argv (`live: yes`), else its working directory newest-only (`live: unknown`) |
 
 Hidden by default (counted as `hidden_subagents`): Codex threads whose
 `thread_source` is `subagent` or `guardian_review`; OpenCode sessions with a
-`parent_id`. Codex `forked_from_id`, Muse `msp_fork_source_session_id` and
-OpenCode v2 `fork_session_id` mark user forks — listed, with lineage.
+`parent_id`; Antigravity rows with `nesting_depth > 0`. Codex `forked_from_id`,
+Muse `msp_fork_source_session_id`, OpenCode v2 `fork_session_id`, and
+Antigravity rows with `nesting_depth == 0` and a `parent_conversation_id` mark
+user forks — listed, with lineage.
+
+Antigravity (`agy`) scans strictly `~/.gemini/antigravity-cli` (Antigravity
+CLI). Separate Antigravity App (`~/.gemini/antigravity`) and IDE
+(`~/.gemini/antigravity-ide`) stores are not merged because `agy --conversation`
+cannot resume them. Resume uses `cd '<spawn_dir>' && agy --conversation <id>`
+(blocked if `live == "yes"` or `spawn_dir` is absent).
 
 ## Exit codes (R6.1)
 

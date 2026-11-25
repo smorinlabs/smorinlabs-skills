@@ -36,7 +36,13 @@ def run(argv, json_output=True, timeout=25):
 
 def tool_name(process):
     text = " ".join(str(process.get(k, "")) for k in ("path", "argv0", "name", "script")).lower()
-    return next((t for t in ("claude", "codex", "muse", "opencode", "herdr") if t in text), "unknown")
+    matched = next((t for t in ("claude", "codex", "muse", "opencode", "herdr") if t in text), None)
+    if matched:
+        return matched
+    tokens = [Path(tok.lstrip("-")).name for tok in text.split() if tok]
+    if any(tok == "agy" or tok.startswith("agy-bin") or "antigravity" in tok for tok in tokens):
+        return "agy"
+    return "unknown"
 
 
 def excerpt(text):
@@ -69,10 +75,20 @@ def text_excerpt(path, cached, full, metrics):
             payload = item.get("payload") or item.get("message") or item
             if not isinstance(payload, dict):
                 continue
-            role = payload.get("role") or item.get("type")
-            if role not in ("user", "assistant"):
-                continue
-            content = payload.get("content", "")
+            item_type = item.get("type")
+            if item.get("source") == "USER_EXPLICIT" and item_type == "USER_INPUT":
+                role = "user"
+                raw_content = item.get("content", "")
+                match = re.search(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", raw_content, re.DOTALL) if isinstance(raw_content, str) else None
+                content = match.group(1).strip() if match else raw_content
+            elif item.get("source") == "MODEL" and item_type == "PLANNER_RESPONSE":
+                role = "assistant"
+                content = item.get("content", "")
+            else:
+                role = payload.get("role") or item_type
+                if role not in ("user", "assistant"):
+                    continue
+                content = payload.get("content", "")
             if isinstance(content, list):
                 content = "\n".join(b.get("text", "") for b in content if isinstance(b, dict)
                                     and isinstance(b.get("text"), str))
@@ -246,12 +262,18 @@ def herdr(data, names, deep):
                     row["processes"] = info.get("foreground_processes", [])
                     for proc in row["processes"]:
                         argv = proc.get("argv", [])
-                        for flag in ("resume", "--resume", "--session"):
-                            if flag in argv and len(argv) > argv.index(flag) + 1:
-                                actual = argv[argv.index(flag) + 1]
-                                if any(c["native_id"] == actual for c in data["conversations"].values()):
-                                    row.update(native_id=actual, identity_basis="Observed process resume argument",
-                                               identity_conflict=actual != reported)
+                        actual = None
+                        for idx, tok in enumerate(argv):
+                            flag, has_eq, val = tok.partition("=")
+                            if has_eq and flag in ("--resume", "--session", "--conversation", "-r") and val:
+                                actual = val
+                                break
+                            if tok in ("resume", "--resume", "--session", "--conversation", "-r") and idx + 1 < len(argv):
+                                actual = argv[idx + 1]
+                                break
+                        if actual and any(c["native_id"] == actual for c in data["conversations"].values()):
+                            row.update(native_id=actual, identity_basis="Observed process resume argument",
+                                       identity_conflict=actual != reported)
                     if deep(row):
                         row["evidence"] = excerpt(run(prefix + ["pane", "read", pane["pane_id"],
                                                               "--source", "recent-unwrapped", "--lines", "100"], False))

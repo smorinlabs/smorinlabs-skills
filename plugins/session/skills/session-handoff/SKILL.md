@@ -72,22 +72,34 @@ neutral dump. Infer, show, then confirm or ask:
   have it** — if the script is missing, say so plainly and compose the
   handoff from what is in context, exactly as when no transcript exists.
 
-  `$CLAUDE_CODE_SESSION_ID` names this session's transcript; the script reads it
-  from its own environment, so pass no argument. It returns the title, opening
-  prompt, compaction markers, branch changes, the last turns, and a
-  **references** block (tickets, spec/doc files, URLs) — the raw material for
-  artifacts and tacit context. On `NO_TRANSCRIPT`, fall back to the newest
-  transcript **for this repo** — transcripts are filed per working directory,
-  so scope the lookup rather than taking the newest on the machine, which is
-  frequently another repo's:
+  The script auto-detects the current session from its environment, so pass no
+  argument:
+  - **Claude Code:** `$CLAUDE_CODE_SESSION_ID` → `~/.claude/projects/*/<id>.jsonl`
+  - **Antigravity (`agy`):** `$ANTIGRAVITY_CONVERSATION_ID` (with
+    `ANTIGRAVITY_AGENT=1` set) →
+    `${ANTIGRAVITY_APP_DATA_DIR:-~/.gemini/antigravity-cli}/brain/<id>/.system_generated/logs/transcript.jsonl`
+
+  It returns the title, opening prompt, compaction markers (when recorded),
+  branch changes, the last turns, and a **references** block (tickets, spec/doc
+  files, URLs) — the raw material for artifacts and tacit context. On
+  `NO_TRANSCRIPT`, check the harness-specific transcript location for **this
+  session / this repo** before falling back to in-context composition — never
+  take the newest transcript on the machine, which is frequently another repo's:
 
   ```bash
+  # Antigravity (agy): direct path from ANTIGRAVITY_CONVERSATION_ID
+  if [ -n "${ANTIGRAVITY_CONVERSATION_ID:-}" ]; then
+    agy_t="${ANTIGRAVITY_APP_DATA_DIR:-$HOME/.gemini/antigravity-cli}/brain/$ANTIGRAVITY_CONVERSATION_ID/.system_generated/logs/transcript.jsonl"
+    [ -f "$agy_t" ] && echo "$agy_t"
+  fi
+  # Claude Code: newest transcript scoped to THIS repo's project dir
   proj=~/.claude/projects/"$(echo "$PWD" | tr '/.' '--')"
   newest="$(ls -t "$proj" 2>/dev/null | grep '\.jsonl$' | head -1)"
   [ -n "$newest" ] && echo "$proj/$newest"
   ```
 
-  Pass that positionally. If there is none, compose from context and say so —
+  Pass that positionally. If there is none (for example under Codex, Muse, or
+  OpenCode, or when no transcript exists yet), compose from context and say so —
   never widen the search to other repos to fill the gap.
 
 - **Repo identity** (so the target can locate or *clone* the repo):
@@ -216,6 +228,7 @@ context, in-flight complexity}:
 
   > ▶ ⌨️ — Start a new session in `<repo>` and paste:
   > `Read ~/<basedir>/<repo>/docs/handoffs/<file>.md and continue.`
+  > (Or launch directly: `cd ~/<basedir>/<repo> && agy -i "Read ~/<basedir>/<repo>/docs/handoffs/<file>.md and continue."` in Antigravity, or the equivalent fresh-session command in Claude Code / Codex / Muse / OpenCode; to return to an existing Antigravity conversation instead of starting fresh, use `cd <dir> && agy --conversation <id>`.)
   > ✓ The handoff doc is itself uncommitted until you commit it — commit it if it
   > must reach another machine.
 

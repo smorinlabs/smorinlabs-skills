@@ -60,10 +60,10 @@ axis that matters: did anyone agree to it, and who has to move next.
      | `ahead>0` | 📌 **divergence — never 🧹** | preserve to a branch *first*; `--ff-only` refuses by design and `reset --hard` silently destroys the commits |
      | `0, 0` | clear | name it in the clear-footer |
    - **Processes**: the session task list (uncollected background tasks and
-     agents), lingering background shells, Codex companion jobs still
-     "running/verifying" after their results were taken (sweep
-     `codex-companion status` when that runtime is present — zombies are a
-     known failure mode).
+     agents — e.g. Antigravity `manage_task` / `manage_subagents`), lingering
+     background shells, Codex companion jobs still "running/verifying" after
+     their results were taken (sweep `codex-companion status` when that runtime
+     is present — zombies are a known failure mode).
    - **Conversation promises**: scan the recent thread for commitments not
      yet done — "I'll do X", deferred follow-ups, questions asked and never
      answered, offered next steps never taken.

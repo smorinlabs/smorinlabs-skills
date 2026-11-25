@@ -65,27 +65,34 @@ not here):
 python3 <skill-dir>/scripts/transcript_digest.py
 ```
 
-`$CLAUDE_CODE_SESSION_ID` is exported into the environment and names the transcript
-file exactly, so the script finds *this* session deterministically — it reads the
-variable from its own environment, so don't pass it as an argument (that just risks
-the value getting lost if your shell didn't export it). The digest gives you the
-title, the opening prompt, compaction markers, branch changes, timing, the last
-several turns, and a **references** block — ticket ids (e.g. `ENG-1423`), spec/doc
-files, and URLs mentioned in the session. Those references are gold for orienting
-open work: they point at the goal's source of truth.
+The script reads `$CLAUDE_CODE_SESSION_ID` (Claude Code) or
+`$ANTIGRAVITY_CONVERSATION_ID` (Antigravity, resolving
+`${ANTIGRAVITY_APP_DATA_DIR:-~/.gemini/antigravity-cli}/brain/<id>/.system_generated/logs/transcript.jsonl`)
+from its own environment and finds *this* session deterministically — don't pass
+the variable as an argument (that risks losing it if your shell didn't export
+it). The digest gives you the title, the opening prompt, compaction markers,
+branch changes, timing, the last several turns, and a **references** block —
+ticket ids (e.g. `ENG-1423`), spec/doc files, and URLs mentioned in the session.
+Those references are gold for orienting open work: they point at the goal's
+source of truth.
 
 For a long or multi-day session, `python3 <skill-dir>/scripts/transcript_digest.py
 --prompts-only` lists the human's substantive prompts with timestamps — those are
 the raw material for the 🧵 Timeline's beats (Report → 1 · 🧵 Timeline).
 
 If the script prints `NO_TRANSCRIPT` (unset session id on an older CLI, or a
-different harness), fall back to the most recently modified transcript for this
-repo and pass it positionally:
+different harness), check the Antigravity path directly if
+`$ANTIGRAVITY_CONVERSATION_ID` is set, or fall back to the most recently
+modified Claude Code transcript for this repo and pass it positionally:
 
 ```bash
-# Transcripts are filed per working directory, so scope to THIS repo instead
-# of globbing every project: the newest transcript on the machine is often
-# another repo's, and a recap of the wrong repo reads as perfectly correct.
+# Antigravity (agy): direct path from ANTIGRAVITY_CONVERSATION_ID
+if [ -n "${ANTIGRAVITY_CONVERSATION_ID:-}" ]; then
+  agy_t="${ANTIGRAVITY_APP_DATA_DIR:-$HOME/.gemini/antigravity-cli}/brain/$ANTIGRAVITY_CONVERSATION_ID/.system_generated/logs/transcript.jsonl"
+  [ -f "$agy_t" ] && echo "$agy_t"
+fi
+# Claude Code: transcripts are filed per working directory, so scope to THIS
+# repo instead of globbing every project.
 proj=~/.claude/projects/"$(echo "$PWD" | tr '/.' '--')"
 newest="$(ls -t "$proj" 2>/dev/null | grep '\.jsonl$' | head -1)"
 [ -n "$newest" ] && echo "$proj/$newest"   # then: transcript_digest.py <that-path>
@@ -147,8 +154,10 @@ python3 <skill-dir>/scripts/transcript_digest.py --scope
 
 This emits the first→last-seen span per `cwd`/branch pair, in transcript order,
 plus any `worktree-state` / `relocated` events — the raw material for the Scope
-map's per-location rows. It's a transcript view, not a live probe: run the git
-commands above per location it names to learn what's true *now*.
+map's per-location rows (Antigravity transcripts do not record per-turn
+`cwd`/`gitBranch`, so probe git directly there). It's a transcript view, not a
+live probe: run the git commands above per location it names to learn what's
+true *now*.
 
 ### 3. Pull request and CI (best-effort via `gh`)
 

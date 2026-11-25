@@ -3,7 +3,7 @@ name: session-move
 allowed-tools: Bash, AskUserQuestion
 argument-hint: "[destination-session] [--window <label|id> --session <label|id>]"
 arguments: [destination]
-description: Move a Rex window (a tab in the Rex app) from one Rex session to another on the same computer. Rex cannot move a window between sessions, so this recreates it in the destination with the same agent (Claude Code, Codex, or Muse), the same conversation resumed by ID, the same working directory, and the same window name, then closes the old window. Use when the user says "move this window to <session>", "move this tab to another session", "session move", or wants a running agent conversation relocated between Rex sessions. Not for launching a new side idea in a fresh agent (session-spinoff), continuing work in a new conversation or on another machine (session-handoff), copying a conversation into a new worktree (agent-fork), or general Rex tab and session control (rex).
+description: Move a Rex window (a tab in the Rex app) from one Rex session to another on the same computer. Rex cannot move a window between sessions, so this recreates it in the destination with the same agent (Claude Code, Codex, Muse, or Antigravity), the same conversation resumed by ID, the same working directory, and the same window name, then closes the old window. Use when the user says "move this window to <session>", "move this tab to another session", "session move", or wants a running agent conversation relocated between Rex sessions. Not for launching a new side idea in a fresh agent (session-spinoff), continuing work in a new conversation or on another machine (session-handoff), copying a conversation into a new worktree (agent-fork), or general Rex tab and session control (rex).
 ---
 
 # session-move
@@ -22,7 +22,7 @@ resumes the same conversation, and the old window closes.
 ## Contract
 
 - **The unit is one Rex window with exactly one pane** running Claude Code,
-  Codex, or Muse. Anything else is refused with the reason.
+  Codex, Muse, or Antigravity (`agy`). Anything else is refused with the reason.
 - **Same computer only.** A Rex session can span computers. A window that runs
   on another computer is refused; say that moving across computers is out of
   scope.
@@ -62,8 +62,9 @@ Run it as `uv run --script "$MOVE" <verb> ...` (stdlib only, Python ≥ 3.11).
 Each verb prints JSON; a refusal prints one line to stderr and exits 2. The
 commands below save each result for the next verb and print it with the exit
 code. The
-helper finds Codex and Muse conversations through the sibling
-`../session-agent-list/scripts/session-inventory`; if that file is missing it
+helper finds Codex, Muse, and Antigravity conversations through the sibling
+`../session-agent-list/scripts/session-inventory` (or `$ANTIGRAVITY_CONVERSATION_ID`
+for an Antigravity self-move); if that file is missing it
 says so in the refusal.
 
 ## Workflow
@@ -139,7 +140,7 @@ agent. Report:
 | Field | Meaning |
 |---|---|
 | `resumed` | The destination window runs the same agent. |
-| `same_conversation` | `true`: the agent's own record shows the same conversation ID (Claude Code and Muse). `null`: Codex keeps no such record, so only the process was checked. `false`: a different conversation; say so plainly. |
+| `same_conversation` | `true`: the agent's own record shows the same conversation ID (Claude Code, Muse, and Antigravity). `null`: Codex keeps no such record, so only the process was checked. `false`: a different conversation; say so plainly. |
 | `old_window_closed` | `true`: the source window is gone. `null`: Rex could not list the source session, so it is unknown; say so. |
 | `jump` | The command that switches the Rex app to the new window. Print it and offer to run it. It names the app with `-C` when exactly one is connected; with several, ask which device. |
 
@@ -173,8 +174,8 @@ session themselves. A long final message delays the move, and anything after
 | `runs on a different computer` | Moving across computers is out of scope. Suggest `session-handoff` for continuing elsewhere. |
 | `cannot confirm the window runs on this computer` | Rex reported no host for the pane. Nothing was changed. |
 | `has N panes` | Only a single-pane window can move. |
-| `not running Claude Code, Codex, or Muse` | Name the foreground program the helper reported. |
-| `cannot tell which … conversation` | Relay the detail. For several live Codex conversations in one directory, rerun `plan` with `--conversation <id>` once the user picks one. |
+| `not running Claude Code, Codex, Muse, or Antigravity` | Name the foreground program the helper reported. |
+| `cannot tell which … conversation` | Relay the detail. For several live Codex conversations in one directory (or a bare `agy` session without `--conversation`), rerun `plan` with `--conversation <id>` once the user picks one. |
 | `not idle (status: busy)` | The other agent is mid-turn. Wait or ask the user. |
 | `background shell running` | The move would end that shell. Ask the user. |
 | `transcript changed Ns ago` | The transcript has no turn records, so the helper used six quiet seconds; wait and plan again. |
@@ -191,23 +192,26 @@ session themselves. A long final message delays the move, and anything after
 ## Limits to state when they apply
 
 - **Launch flags are not carried over.** The resume command is
-  `claude --resume <id>`, `codex resume <id>`, or `muse resume <id>`. A model,
+  `claude --resume <id>`, `codex resume <id>`, `muse resume <id>`, or
+  `agy --conversation <id>`. A model,
   permission mode, or other flag given when the old agent started is not
   repeated.
 - **Muse prints a warning on resume** that the previous run ended without a
   clean shutdown. That is the old window closing; the conversation is intact.
 - **A self-move needs a turn-end signal.** Claude Code publishes its status.
-  For Codex and Muse the handoff waits for the turn-end record in the
-  transcript (Codex `task_complete`, Muse's run `terminal`), which Muse writes
+  For Codex, Muse, and Antigravity the handoff waits for the turn-end record in the
+  transcript (Codex `task_complete`, Muse's run `terminal`, Antigravity
+  `PLANNER_RESPONSE` with `status: "DONE"` and no `tool_calls`), which Muse writes
   only after reviewing its answer. Only a transcript with no turn records falls
   back to six quiet seconds.
 - **Codex commands carry another tab's Rex IDs.** Commands Codex runs inherit
   `REX_SESSION` and `REX_BLOCK` from its shared app-server. The helper ignores
   them under Codex and finds the tab by `CODEX_THREAD_ID`. Do not use
   `$REX_SESSION` or `$REX_BLOCK` yourself under Codex.
-- **Codex and Muse sandboxes block the helper.** It needs the Rex socket and
-  process listing. Expect one approval request per helper command; in a Codex
-  folder that is not trusted, escalation is refused and the move cannot run.
+- **Codex, Muse, and Antigravity sandboxes block the helper.** It needs the Rex
+  socket and process listing. Expect one approval request per helper command; in
+  a Codex folder that is not trusted, escalation is refused and the move cannot
+  run.
 
 ## Red Flags
 
@@ -227,5 +231,6 @@ session themselves. A long final message delays the move, and anything after
 - `session-handoff` — continues the work in a *new* conversation, including on
   another computer.
 - `session-agent-list` — lists agent conversations and their resume commands.
-- `agent-fork` — copies this conversation into a new worktree.
+- `agent-fork` — copies this conversation into a new worktree (not yet available
+  for Antigravity `agy` — use `session-handoff` or `session-spinoff` instead).
 - `rex` — the full Rex CLI guide (`rex skill show`).

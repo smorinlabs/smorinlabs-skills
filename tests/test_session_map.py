@@ -403,3 +403,26 @@ def test_new_project_plan_invalidates_session_assessment():
     data = state.reconcile(data, fresh, {"test": {"status": "ok"}}, {})
     assert data["locations"]["loc:a"]["assessment"]["freshness"] == "stale"
     assert "loc:a" in data["changes"]["reassess"]
+
+
+def test_agy_tool_name_excerpt_and_prototype_import(tmp_path):
+    assert collectors.tool_name({"argv0": "/opt/local/bin/agy"}) == "agy"
+    assert collectors.tool_name({"argv0": "strategy-runner"}) == "unknown"
+
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text("\n".join([
+        json.dumps({"source": "USER_EXPLICIT", "type": "USER_INPUT",
+                    "content": "<USER_REQUEST>\nShip agy support\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>"}),
+        json.dumps({"source": "MODEL", "type": "PLANNER_RESPONSE", "content": "Working on it."}),
+    ]) + "\n")
+    metrics = {"excerpt_cache_hits": 0, "excerpts_parsed": 0}
+    got = collectors.text_excerpt(str(transcript), None, False, metrics)
+    assert "user: Ship agy support" in got["text"]
+    assert "assistant: Working on it." in got["text"]
+
+    raw = {"projects": [], "sessions": [
+        {"id": "A1", "agent": "Antigravity", "native_id": "2c8e9676", "title": "Agy work"}
+    ]}
+    imported = import_prototype(raw, {"roots": [], "sources": []})
+    conv = next(iter(imported["conversations"].values()))
+    assert conv["agent"] == "agy" and conv["source_id"] == "native:agy"

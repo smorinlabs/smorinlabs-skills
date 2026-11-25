@@ -15,7 +15,7 @@ Schema version 1 contains these top-level fields:
 | `config` | Persisted roots, sources, manager instances, and map configuration. |
 | `sources` | Source attempts, success/coverage, capabilities, and errors. |
 | `locations` | Terminal locations keyed by persistent ID. |
-| `conversations` | Native agent conversations keyed by persistent ID. |
+| `conversations` | Native agent conversations (Claude Code, Codex, Muse, OpenCode, Antigravity `agy`) keyed by persistent ID. |
 | `projects` | Project/workstream records keyed by persistent ID. |
 | `plans` | Source plans and their parsed phase/task records keyed by persistent ID. |
 | `changes` | Added, changed, missing, and reassessment information for the update. |

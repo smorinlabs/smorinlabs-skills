@@ -227,6 +227,72 @@ def build_opencode(home: Path):
     return ids, data
 
 
+AGY_SCHEMA = """CREATE TABLE conversation_summaries (
+  conversation_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  preview TEXT NOT NULL DEFAULT '',
+  step_count INTEGER NOT NULL DEFAULT 0,
+  last_modified_time DATETIME NOT NULL,
+  workspace_uris TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT '',
+  project_id TEXT NOT NULL DEFAULT '',
+  agent_name TEXT NOT NULL DEFAULT '',
+  parent_conversation_id TEXT NOT NULL DEFAULT '',
+  nesting_depth INTEGER NOT NULL DEFAULT 0,
+  last_user_input_time DATETIME NOT NULL
+)"""
+
+
+def build_agy(home: Path):
+    root = home / ".gemini" / "antigravity-cli"
+    root.mkdir(parents=True)
+    ids = {
+        "main": "2c8e9676-a98c-4595-b618-d4e53715f32b",
+        "preview_only": "3d9f0787-b09d-4606-c729-e5f64826043c",
+        "noworkspace": "4e001898-c10e-4717-d830-f6075937154d",
+        "fork": "5f112909-d21f-4828-e941-07186048265e",
+        "sub": "60223010-e320-4939-fa52-18297159376f",
+    }
+    db = sqlite3.connect(root / "conversation_summaries.db")
+    db.execute(AGY_SCHEMA)
+    # Mix ISO 8601 and Go time.Time string formats to exercise timestamp normalization
+    rows = [
+        (ids["main"], "Ship agy support", "fallback preview", 12,
+         iso(NOW - 2 * HOUR), json.dumps(["file:///work/zeta", "file:///work/extra"]),
+         "", 0, iso(NOW - 2 * HOUR)),
+        (ids["preview_only"], "", "Preview becomes title", 4,
+         time.strftime("%Y-%m-%d %H:%M:%S.123456789 +0000 UTC", time.gmtime(NOW - 40 * HOUR)),
+         "file:///work/my%20agy%20repo",
+         "", 0, iso(NOW - 40 * HOUR)),
+        (ids["noworkspace"], "No workspace session", "", 1,
+         iso(NOW - 5 * HOUR), "[]",
+         "", 0, iso(NOW - 5 * HOUR)),
+        (ids["fork"], "Forked agy session", "", 5,
+         iso(NOW - 3 * HOUR), json.dumps(["file:///work/zeta"]),
+         ids["main"], 0, iso(NOW - 3 * HOUR)),
+        (ids["sub"], "Subagent task", "", 3,
+         iso(NOW - 1 * HOUR), json.dumps(["file:///work/zeta"]),
+         ids["main"], 1, iso(NOW - 1 * HOUR)),
+    ]
+    for sid, title, preview, steps, mod, ws, parent, depth, last_in in rows:
+        db.execute(
+            "INSERT INTO conversation_summaries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (sid, title, preview, steps, mod, ws, "IDLE", "cli", "default", "", parent, depth, last_in),
+        )
+    db.commit()
+    db.close()
+
+    # Transcripts: main, fork, and sub have transcript.jsonl with created_at; preview_only omits it
+    for key, created_offset in (("main", 4 * HOUR), ("fork", 3.5 * HOUR), ("sub", 1.5 * HOUR)):
+        tpath = root / "brain" / ids[key] / ".system_generated" / "logs" / "transcript.jsonl"
+        write_jsonl(tpath, [
+            {"step_index": 0, "source": "USER_EXPLICIT", "type": "USER_INPUT",
+             "status": "DONE", "created_at": iso(NOW - created_offset), "content": "hello"},
+        ], mtime=NOW - 1 * HOUR)
+    return ids, root
+
+
 @pytest.fixture()
 def home(tmp_path):
     h = tmp_path / "home"
@@ -241,6 +307,7 @@ def world(home):
         "codex": build_codex(home),
         "muse": build_muse(home)[0],
         "opencode": build_opencode(home)[0],
+        "agy": build_agy(home)[0],
     }
 
 
@@ -537,6 +604,87 @@ def test_opencode_v2_fork_keeps_its_lineage_and_stays_listed(home):
     assert doc["sources"]["opencode"]["legacy_only"] == 0
 
 
+def test_agy_extraction_workspace_variants_lineage_and_subagents(home, world):
+    ids = world["agy"]
+    doc = inventory(home, "--tool", "agy")
+    got = by_id(doc)
+    assert set(got) == {ids["main"], ids["preview_only"], ids["noworkspace"], ids["fork"]}
+    s = got[ids["main"]]
+    assert s["tool"] == "agy"
+    assert s["name"] is None and s["name_resumable"] is False
+    assert s["title"] == "Ship agy support"
+    assert s["spawn_dir"] == "/work/zeta"
+    assert s["created"].startswith(iso(NOW - 4 * HOUR)[:16])
+    assert s["updated"].startswith(iso(NOW - 2 * HOUR)[:16])
+    assert s["transcript"].endswith(f"brain/{ids['main']}/.system_generated/logs/transcript.jsonl")
+    assert s["resume"] == f"cd /work/zeta && agy --conversation {ids['main']}"
+    assert s["lineage"] is None
+
+    prev = got[ids["preview_only"]]
+    assert prev["title"] == "Preview becomes title"
+    assert prev["spawn_dir"] == "/work/my agy repo"
+    assert prev["created"] is None  # missing transcript must never fall back to last_modified_time
+    assert prev["transcript"] is None
+    assert prev["resume"] == f"cd '/work/my agy repo' && agy --conversation {ids['preview_only']}"
+
+    nows = got[ids["noworkspace"]]
+    assert nows["resume"] is None and nows["resume_blocked"] == "no_workspace"
+
+    assert got[ids["fork"]]["lineage"] == {"kind": "fork", "parent_id": ids["main"]}
+    assert doc["census"]["agy"]["hidden_subagents"] == 1
+
+    with_subs = by_id(inventory(home, "--tool", "agy", "--include-subagents"))
+    assert with_subs[ids["sub"]]["lineage"] == {"kind": "subagent", "parent_id": ids["main"]}
+
+
+def test_agy_store_is_not_modified_and_handles_minimal_schema(home, world):
+    db_path = home / ".gemini" / "antigravity-cli" / "conversation_summaries.db"
+    before = db_path.read_bytes()
+    inventory(home, "--tool", "agy")
+    assert db_path.read_bytes() == before
+
+    # Minimal schema without optional preview / parent_conversation_id / nesting_depth columns
+    db_path.unlink()
+    db = sqlite3.connect(db_path)
+    db.execute(
+        "CREATE TABLE conversation_summaries ("
+        "conversation_id TEXT PRIMARY KEY, title TEXT, last_modified_time TEXT, workspace_uris TEXT)"
+    )
+    db.execute(
+        "INSERT INTO conversation_summaries VALUES (?,?,?,?)",
+        ("minimal-1", "Minimal row", iso(NOW - HOUR), "file:///work/min1\nfile:///work/min2"),
+    )
+    db.execute(
+        "INSERT INTO conversation_summaries VALUES (?,?,?,?)",
+        ("minimal-2", "Comma row", iso(NOW - 2 * HOUR), "file:///work/comma1,file:///work/comma2"),
+    )
+    db.execute(
+        "INSERT INTO conversation_summaries VALUES (?,?,?,?)",
+        ("minimal-3", "Plain path", iso(NOW - 3 * HOUR), "/work/plain"),
+    )
+    db.commit()
+    db.close()
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got["minimal-1"]["spawn_dir"] == "/work/min1"
+    assert got["minimal-2"]["spawn_dir"] == "/work/comma1"
+    assert got["minimal-3"]["spawn_dir"] == "/work/plain"
+
+
+def test_agy_schema_error_is_partial_failure(home, world):
+    db = sqlite3.connect(home / ".gemini/antigravity-cli/conversation_summaries.db")
+    db.execute("DROP TABLE conversation_summaries")
+    db.execute("CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY)")
+    db.commit()
+    db.close()
+    r = run(home, "list", "--json")
+    assert r.returncode == 1
+    doc = json.loads(r.stdout)
+    assert doc["sources"]["agy"]["status"] == "error"
+    assert world["claude"]["renamed"] in by_id(doc)
+    err = json.loads(r.stderr.strip().splitlines()[-1])
+    assert err["error"]["code"] == "source_unreadable" and err["error"]["sources"] == ["agy"]
+
+
 # --- filters --------------------------------------------------------------------
 
 def test_tool_filter_is_repeatable(home, world):
@@ -686,6 +834,62 @@ def test_opencode_directory_fallback_marks_only_newest_unknown(home, world, proc
     # --live keeps possibly-running sessions (PR #86 review, thread 4114456485)
     live_ids = set(by_id(inventory(home, "--tool", "opencode", "--live")))
     assert live_ids == {ids["top"]}
+
+
+def test_agy_process_with_conversation_arg_is_live(home, world, procs):
+    ids = world["agy"]
+    p = procs([str(fake_tool(home / "bin", "agy")), "--conversation", ids["main"]])
+    got = by_id(inventory(home, "--tool", "agy"))
+    s = got[ids["main"]]
+    assert s["live"] == "yes" and s["live_host"] == "cli" and s["pid"] == p.pid
+    assert s["resume"] is None and s["resume_blocked"] == "running"
+    assert got[ids["fork"]]["live"] == "no"
+
+
+def test_agy_process_with_resume_short_and_equals_args_is_live(home, world, procs):
+    ids = world["agy"]
+    procs([str(fake_tool(home / "bin", "agy")), f"--resume={ids['main']}"])
+    procs([str(fake_tool(home / "bin", "agy")), "-r", ids["fork"]])
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got[ids["main"]]["live"] == "yes"
+    assert got[ids["fork"]]["live"] == "yes"
+
+
+def test_agy_non_tui_subcommands_and_print_mode_do_not_trigger_liveness(home, world, procs, tmp_path):
+    ids = world["agy"]
+    workdir = tmp_path / "zeta"
+    workdir.mkdir()
+    db = sqlite3.connect(home / ".gemini/antigravity-cli/conversation_summaries.db")
+    db.execute("UPDATE conversation_summaries SET workspace_uris = ?",
+               (json.dumps([workdir.resolve().as_uri()]),))
+    db.commit()
+    db.close()
+    exe = str(fake_tool(home / "bin", "agy"))
+    procs([exe, "acp", "--stdio"], cwd=workdir)
+    procs([exe, "plugin", "validate", "."], cwd=workdir)
+    procs([exe, "-p", "quick question"], cwd=workdir)
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got[ids["main"]]["live"] == "no"
+    assert got[ids["fork"]]["live"] == "no"
+
+
+def test_agy_directory_fallback_marks_only_newest_unknown(home, world, procs, tmp_path):
+    ids = world["agy"]
+    workdir = tmp_path / "zeta"
+    workdir.mkdir()
+    db = sqlite3.connect(home / ".gemini/antigravity-cli/conversation_summaries.db")
+    db.execute("UPDATE conversation_summaries SET workspace_uris = ?",
+               (json.dumps([workdir.resolve().as_uri()]),))
+    db.commit()
+    db.close()
+    procs([str(fake_tool(home / "bin", "agy"))], cwd=workdir)
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got[ids["main"]]["live"] == "unknown"
+    assert "agy pid" in got[ids["main"]]["live_basis"]
+    assert got[ids["main"]]["resume"] is not None  # unknown never blocks resume
+    assert got[ids["fork"]]["live"] == "no"        # older session stays "no"
+    live_ids = set(by_id(inventory(home, "--tool", "agy", "--live")))
+    assert live_ids == {ids["main"]}
 
 
 # --- text output ----------------------------------------------------------------

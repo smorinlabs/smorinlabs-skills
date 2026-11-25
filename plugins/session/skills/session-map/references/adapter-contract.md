@@ -5,7 +5,7 @@ availability, observation freshness, and assessment freshness are independent.
 
 | Source | Responsibility |
 |---|---|
-| Native collector | Claude Code, Codex, Muse, and OpenCode identity, lineage, paths, liveness, and source errors. |
+| Native collector | Claude Code, Codex, Muse, OpenCode, and Antigravity (`agy`) identity, lineage, paths, liveness, and source errors. |
 | Rex | Exact workspace/tab/pane topology, process and bounded terminal evidence, verified navigation targets. |
 | Herdr | Explicitly selected manager instance, its topology and evidence, and any established containing terminal relationship. |
 | Agent Deck | Retained registry entries, with native corroboration when an exact conversation ID matches. Registry membership alone does not prove liveness. No tmux probe or Agent Deck tab-navigation command is provided. |
