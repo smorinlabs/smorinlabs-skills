@@ -670,6 +670,63 @@ def test_agy_store_is_not_modified_and_handles_minimal_schema(home, world):
     assert got["minimal-3"]["spawn_dir"] == "/work/plain"
 
 
+def test_agy_resume_quotes_shell_metacharacters_in_conversation_id(home, world):
+    db_path = home / ".gemini" / "antigravity-cli" / "conversation_summaries.db"
+    crafted = "target; touch /tmp/x"
+    db = sqlite3.connect(db_path)
+    db.execute(
+        "INSERT INTO conversation_summaries "
+        "(conversation_id, title, last_modified_time, workspace_uris, last_user_input_time) "
+        "VALUES (?,?,?,?,?)",
+        (crafted, "Crafted ID", iso(NOW - HOUR), '["file:///work/zeta"]', iso(NOW - HOUR)),
+    )
+    db.commit()
+    db.close()
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got[crafted]["resume"] == "cd /work/zeta && agy --conversation 'target; touch /tmp/x'"
+
+
+def test_agy_truncated_line1_reads_only_top_level_created_at(home, world):
+    db_path = home / ".gemini" / "antigravity-cli" / "conversation_summaries.db"
+    cases = {
+        "agy-trunc-nested-before": (
+            '{"metadata":{"created_at":"2020-01-01T00:00:00Z"},'
+            '"created_at":"2026-11-24T01:02:03Z","content":"' + ("x" * 70000) + '"}'
+        ),
+        "agy-trunc-nested-only": (
+            '{"metadata":{"created_at":"2020-01-01T00:00:00Z"},"content":"'
+            + ("x" * 70000)
+            + '","created_at":"2026-11-24T01:02:03Z"}'
+        ),
+        "agy-trunc-in-string": (
+            '{"content":"\\"created_at\\":\\"2020-01-01T00:00:00Z\\"' + ("x" * 70000) + '"}'
+        ),
+        "agy-trunc-epoch": (
+            '{"note":"{\\"created_at\\":\\"2020-01-01T00:00:00Z\\"}",'
+            '"created_at":1764000000,"content":"' + ("x" * 70000) + '"}'
+        ),
+    }
+    db = sqlite3.connect(db_path)
+    for sid, line in cases.items():
+        db.execute(
+            "INSERT INTO conversation_summaries "
+            "(conversation_id, title, last_modified_time, workspace_uris, last_user_input_time) "
+            "VALUES (?,?,?,?,?)",
+            (sid, sid, iso(NOW - HOUR), '["file:///work/zeta"]', iso(NOW - HOUR)),
+        )
+        tpath = home / ".gemini/antigravity-cli/brain" / sid / ".system_generated/logs/transcript.jsonl"
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        tpath.write_text(line + "\n", encoding="utf-8")
+    db.commit()
+    db.close()
+
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got["agy-trunc-nested-before"]["created"] == "2026-11-24T01:02:03Z"
+    assert got["agy-trunc-nested-only"]["created"] is None
+    assert got["agy-trunc-in-string"]["created"] is None
+    assert got["agy-trunc-epoch"]["created"] == "2025-11-24T16:00:00Z"
+
+
 def test_agy_schema_error_is_partial_failure(home, world):
     db = sqlite3.connect(home / ".gemini/antigravity-cli/conversation_summaries.db")
     db.execute("DROP TABLE conversation_summaries")
@@ -871,6 +928,19 @@ def test_agy_non_tui_subcommands_and_print_mode_do_not_trigger_liveness(home, wo
     got = by_id(inventory(home, "--tool", "agy"))
     assert got[ids["main"]]["live"] == "no"
     assert got[ids["fork"]]["live"] == "no"
+
+
+def test_agy_print_and_value_flag_arguments_are_not_mistaken_for_conversation_id(home, world, procs, tmp_path):
+    ids = world["agy"]
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    exe = str(fake_tool(home / "bin", "agy"))
+    procs([exe, "-p", f"--conversation={ids['main']}"], cwd=other_dir)
+    procs([exe, "--prompt-interactive", f"--conversation={ids['main']}"], cwd=other_dir)
+    procs([exe, "-p", f"--conversation={ids['main']}", "--conversation", ids["fork"]], cwd=other_dir)
+    got = by_id(inventory(home, "--tool", "agy"))
+    assert got[ids["main"]]["live"] == "no"
+    assert got[ids["fork"]]["live"] == "yes"
 
 
 def test_agy_directory_fallback_marks_only_newest_unknown(home, world, procs, tmp_path):

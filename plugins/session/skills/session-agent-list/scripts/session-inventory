@@ -734,16 +734,68 @@ def parse_agy_workspace_uris(raw) -> str | None:
     return None
 
 
+def _extract_top_level_created_at(text: str) -> object | None:
+    """Scan a truncated JSON object prefix for a top-level `created_at` value."""
+    decoder = json.JSONDecoder()
+    n = len(text)
+    i = 0
+    while i < n and text[i] in " \t\r\n":
+        i += 1
+    if i >= n or text[i] != "{":
+        return None
+    i += 1
+    while i < n:
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i >= n or text[i] != '"':
+            return None
+        try:
+            key, i = decoder.raw_decode(text, i)
+        except ValueError:
+            return None
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i >= n or text[i] != ":":
+            return None
+        i += 1
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i >= n:
+            return None
+        try:
+            val, i = decoder.raw_decode(text, i)
+        except ValueError:
+            return None
+        if key == "created_at":
+            return val
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i < n and text[i] == ",":
+            i += 1
+        else:
+            return None
+    return None
+
+
 def agy_created(path: Path, cache: MetadataCache | None = None) -> str | None:
     """Read created_at from line 1 of an Antigravity transcript.jsonl (bounded, cacheable)."""
     def parse(raw: bytes) -> dict:
+        text = raw.decode("utf-8", "replace")
         try:
-            text = raw.decode("utf-8", "replace")
             obj = cache.parse(text) if cache else json.loads(text)
-            if not isinstance(obj, dict):
-                return {"created": None}
+        except ValueError:
+            if len(raw) == AGY_TRANSCRIPT_LINE_MAX and not raw.endswith(b"\n"):
+                val = _extract_top_level_created_at(text)
+                try:
+                    return {"created": agy_timestamp(val)}
+                except (ValueError, TypeError, AttributeError, OverflowError, OSError):
+                    return {"created": None}
+            return {"created": None}
+        if not isinstance(obj, dict):
+            return {"created": None}
+        try:
             return {"created": agy_timestamp(obj.get("created_at"))}
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, OverflowError, OSError):
             return {"created": None}
 
     def load(previous: dict, entry: dict) -> dict:
@@ -796,7 +848,7 @@ def agy_process_info(argv: list[str]) -> tuple[bool, str | None, bool]:
             continue
         if tok in AGY_PRINT_FLAGS:
             is_print = True
-            i += 1
+            i += 2
             continue
         if tok in AGY_VALUE_FLAGS:
             i += 2
@@ -911,7 +963,7 @@ def scan_agy(home: Path, procs: dict[int, list[str]],
         elif not rec["spawn_dir"]:
             rec["resume_blocked"] = "no_workspace"
         else:
-            rec["resume"] = f"{cd_prefix(rec['spawn_dir'])}agy --conversation {rec['id']}"
+            rec["resume"] = f"{cd_prefix(rec['spawn_dir'])}agy --conversation {shlex.quote(rec['id'])}"
     return records, {"status": "ok", "path": str(db_path)}, hidden
 
 
