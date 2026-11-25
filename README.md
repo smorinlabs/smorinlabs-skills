@@ -1,11 +1,12 @@
 # smorinlabs-skills
 
 The public cross-platform plugin marketplace for **smorinlabs** — publishing a
-Claude Code marketplace (`.claude-plugin/marketplace.json`) and an OpenAI Codex
-marketplace (`.agents/plugins/marketplace.json`) from one tree. Sixteen
-plugins, thirty-five skills. Plugin metadata lives in a single source of truth
-(`plugin.meta.toml` per plugin); the per-platform manifests are generated, so
-they can't drift.
+Claude Code marketplace (`.claude-plugin/marketplace.json`), an OpenAI Codex
+marketplace (`.agents/plugins/marketplace.json`), and Antigravity plugin
+manifests (`.agents/plugins.json` + `plugins/*/.antigravity-plugin/plugin.json`)
+from one tree. Sixteen plugins, thirty-five skills. Plugin metadata lives in a
+single source of truth (`plugin.meta.toml` per plugin); the per-platform
+manifests are generated, so they can't drift.
 
 ## Install
 
@@ -26,6 +27,16 @@ codex plugin add repo-hygiene@smorinlabs-skills
 These need a Codex CLI with the `codex plugin` commands; they were tested with
 codex-cli 0.167.2. Upgrade Codex if `codex plugin add` is not recognized.
 
+Antigravity (`agy`): install a plugin directly from a local clone or GitHub, or
+let Antigravity discover every plugin automatically when this repo is open as a
+workspace (via `.agents/plugins.json`):
+
+```
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/repo-hygiene
+# or from a local clone:
+agy plugin install ./smorinlabs-skills/plugins/repo-hygiene
+```
+
 **Develop it** — clone the repo and symlink a skill straight into your local
 skills directory to iterate on it:
 
@@ -34,9 +45,11 @@ git clone https://github.com/smorinlabs/smorinlabs-skills
 ln -s "$(pwd)/smorinlabs-skills/plugins/<plugin>/skills/<skill>" ~/.claude/skills/<skill>
 ```
 
-Codex users: dev-symlink the same skill into `~/.agents/skills` (Codex's current
-skills location) as well. To test the whole marketplace from your clone instead of
-GitHub, add it by path: `codex plugin marketplace add ./smorinlabs-skills`.
+Codex and Antigravity users: dev-symlink the same skill into `~/.agents/skills`
+as well. To test the whole marketplace from your clone instead of GitHub, add it
+by path in Codex (`codex plugin marketplace add ./smorinlabs-skills`) or open
+the clone in Antigravity (where `.agents/plugins.json` discovers all 16 plugins)
+and validate individual plugins with `agy plugin validate ./plugins/<plugin>`.
 
 ### muse-github
 
@@ -157,10 +170,10 @@ Eight session tools — orient, sweep, hand off, glance, find, map, spin off, an
 | `session-loose-ends` | The acting sibling of `session-recap`: sweeps working-state artifacts, running processes, unfulfilled promises, and tracking drift; reports each with evidence and a recommendation in both directions, then executes and verifies only what you confirmed item by item. | [docs/skills/session-loose-ends.md](docs/skills/session-loose-ends.md) |
 | `session-handoff` | Packages the current session into a self-contained handoff a fresh, zero-context session — often on another machine — can act on cold: the outcome, repo identity and paths, resume state, and the tacit context that dies on compaction. | [docs/skills/session-handoff.md](docs/skills/session-handoff.md) |
 | `session-status` | The mid-flight glance — a manually triggered, plain-language progress map of the active stream, with finished work rolled up and remaining work fine-grained where you stand; adds an ASCII kanban board of what's left when work runs in parallel or much remains. Probe-free and read-only. | [docs/skills/session-status.md](docs/skills/session-status.md) |
-| `session-agent-list` | Finds and lists Claude Code, Codex, Muse, and OpenCode sessions across the machine as action-ready cards: end-state triage (open / handed off / closed clean / loose ends), each tool's session name, what is running now, lineage, and copy-paste resume or transcript commands. Filters by tool and by running sessions. | [docs/skills/session-agent-list.md](docs/skills/session-agent-list.md) |
+| `session-agent-list` | Finds and lists Claude Code, Codex, Muse, OpenCode, and Antigravity (`agy`) sessions across the machine as action-ready cards: end-state triage (open / handed off / closed clean / loose ends), each tool's session name, what is running now, lineage, and copy-paste resume or transcript commands. Filters by tool and by running sessions. | [docs/skills/session-agent-list.md](docs/skills/session-agent-list.md) |
 | `session-map` | Maintains a saved project and session map with current owners, task counts, closure recommendations, and copyable tab commands. Refreshes changed evidence incrementally or renders saved data offline. | [docs/skills/session-map.md](docs/skills/session-map.md) |
-| `session-spinoff` | Takes a side idea out of the current session and launches it in a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree from origin, with a self-contained brief as its first prompt. Ranks existing Rex sessions by whether they already work in that repo, asks where to put it and which agent to run, and prints the command that jumps to the new tab. | [docs/skills/session-spinoff.md](docs/skills/session-spinoff.md) |
-| `session-move` | Moves a Rex window (a tab in the Rex app) from one Rex session to another on the same computer. Rex cannot move a window between sessions, so the skill recreates it: the same agent (Claude Code, Codex, or Muse), the same conversation resumed by ID, the same working directory, and the same window name. The new window waits until the old agent has exited before it resumes, so two copies never write one transcript, and it falls back to a shell prompt when the agent exits. Refuses, with the reason, a window on another computer, a multi-pane window, or another window's agent that is mid-turn. | [docs/skills/session-move.md](docs/skills/session-move.md) |
+| `session-spinoff` | Takes a side idea out of the current session and launches it in a fresh Claude Code, Codex, Muse, or Antigravity (`agy`) agent in a Rex tab, on a new worktree from origin, with a self-contained brief as its first prompt. Ranks existing Rex sessions by whether they already work in that repo, asks where to put it and which agent to run, and prints the command that jumps to the new tab. | [docs/skills/session-spinoff.md](docs/skills/session-spinoff.md) |
+| `session-move` | Moves a Rex window (a tab in the Rex app) from one Rex session to another on the same computer. Rex cannot move a window between sessions, so the skill recreates it: the same agent (Claude Code, Codex, Muse, or Antigravity), the same conversation resumed by ID, the same working directory, and the same window name. The new window waits until the old agent has exited before it resumes, so two copies never write one transcript, and it falls back to a shell prompt when the agent exits. Refuses, with the reason, a window on another computer, a multi-pane window, or another window's agent that is mid-turn. | [docs/skills/session-move.md](docs/skills/session-move.md) |
 
 ### clear-technical-communication
 

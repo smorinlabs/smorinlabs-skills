@@ -3,3 +3,4 @@ version = "0.2.0"
 description = "Lightweight PROJECTS.md project management — capture, scope, decompose, triage, and drift-audit projects as auto-triggering skills that hand execution off to Superpowers."
 author = "Steve Morin"
 keywords = ["project-management", "projects", "planning", "audit", "roadmap", "workflow"]
+antigravity_hooks = "./hooks/antigravity-hooks.json"

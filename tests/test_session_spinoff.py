@@ -45,6 +45,7 @@ sp = load_module()
         (["--repo", "shelf", "--codex"], {"repo": "shelf", "agent": "codex"}),
         (["--muse", "idea", "--dry-run"], {"agent": "muse", "idea": "idea", "dry_run": True}),
         (["--claude"], {"agent": "claude"}),
+        (["--agy", "fix", "hooks"], {"agent": "agy", "idea": "fix hooks"}),
     ],
 )
 def test_parse_args_accepts(argv, expected):
@@ -90,6 +91,7 @@ def test_detect_agent():
     assert sp.detect_agent({"foreground": {"argv0": "claude"}}) == "claude"
     assert sp.detect_agent({"foreground": {"argv0": "/opt/homebrew/bin/codex"}}) == "codex"
     assert sp.detect_agent({"foreground": {"argv0": "muse"}}) == "muse"
+    assert sp.detect_agent({"foreground": {"argv0": "/opt/local/bin/agy"}}) == "agy"
     assert sp.detect_agent({"foreground": {"argv0": "zsh"}}) is None
     assert sp.detect_agent({}) is None
 
@@ -183,6 +185,12 @@ def test_commands_existing_session():
     assert launch[:5] == ["rex", "window", "new", "-s", "session:xyz"]
     assert launch[5] == "shelf-tags"
     assert_shell_wrapped(launch, ["codex", BASE_PLAN["brief"]])
+
+
+def test_commands_agy_uses_interactive_prompt_flag():
+    plan = {**BASE_PLAN, "agent": "agy", "placement": "new", "name": "shelf-tags"}
+    launch = sp.build_commands(plan)["launch"]
+    assert_shell_wrapped(launch, ["agy", "-i", BASE_PLAN["brief"]])
 
 
 def test_jump_command():

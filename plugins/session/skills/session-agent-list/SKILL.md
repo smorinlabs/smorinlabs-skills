@@ -3,14 +3,15 @@ name: session-agent-list
 allowed-tools: Read, Glob, Grep, Bash
 argument-hint: "[query] [--tool <name>] [--live] [--compact|--exec|--ledger]"
 arguments: [query]
-description: List Claude Code, Codex, Muse, and OpenCode sessions on this machine as action-ready cards with resume commands, filterable by tool and by what is running now. Use when the user asks to list, find, or resume a past session, which sessions touched a repo, or which sessions are in use. Not for a saved HTML project/session map or its incremental updates (session-map), or orienting inside the current session (session-recap).
+description: List Claude Code, Codex, Muse, OpenCode, and Antigravity (agy) sessions on this machine as action-ready cards with resume commands, filterable by tool and by what is running now. Use when the user asks to list, find, or resume a past session, which sessions touched a repo, or which sessions are in use. Not for a saved HTML project/session map or its incremental updates (session-map), or orienting inside the current session (session-recap).
 ---
 
 # session-agent-list
 
-Find Claude Code, Codex, Muse, and OpenCode sessions on this machine and
-render them in the canonical card format — so the user can triage by end
-state, see what is running, get back into a session, or read what it did.
+Find Claude Code, Codex, Muse, OpenCode, and Antigravity (`agy`) sessions on
+this machine and render them in the canonical card format — so the user can
+triage by end state, see what is running, get back into a session, or read what
+it did.
 
 ## Contract
 
@@ -37,7 +38,7 @@ state, see what is running, get back into a session, or read what it did.
 1. **Scope.** From the invocation (`[query]`) and conversation, derive the
    filter: time window, tool (`--tool`, or "my Muse sessions"), running now
    (`--live`, or "what's in use"), repo/topic, or free text. No query →
-   recent sessions across all four tools. The flags pick the view: none → **full cards,
+   recent sessions across all five tools. The flags pick the view: none → **full cards,
    together** (the default listing), `--compact` → orientation-compact
    triage, `--exec` → respawn console, `--ledger` → what-it-did ledger (all
    defined in the spec).
@@ -66,7 +67,7 @@ state, see what is running, get back into a session, or read what it did.
 
 ## Data sources
 
-One read-only CLI ships inside this skill and reads all four stores. Resolve
+One read-only CLI ships inside this skill and reads all five stores. Resolve
 it in this order and reuse the result for the whole session:
 
 ```bash
@@ -90,13 +91,16 @@ plugin.
 | Codex | `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` (default `~/.codex`) | `codex resume <uuid>` | thread name (also resumable) |
 | Muse | `~/.local/share/muse/session-index.db` + per-session dirs | `cd <workspace> && muse resume <uuid>` | canonical name (also resumable) |
 | OpenCode | `~/.local/share/opencode/opencode.db` (table `session_v2`, else `session`; when `session_v2` exists, `session` rows missing from it are `legacy_only`, no resume) | `cd <dir> && opencode --session <id>` | slug |
+| Antigravity (`agy`) | `~/.gemini/antigravity-cli/conversation_summaries.db` + `brain/<id>/.system_generated/logs/transcript.jsonl` | `cd <spawn-dir> && agy --conversation <uuid>` | — (`title` / `preview`; `/rename` edits title) |
 
 - **Liveness** (`live`: `yes` / `no` / `unknown`, with `live_basis`) comes
   from each tool's own evidence: Claude Code's `~/.claude/sessions/<pid>.json`
   registry (PID alive and start time matching), Codex writer locks held open,
-  Muse `.session.lock` whose PID is a running `muse`, and OpenCode processes.
+  Muse `.session.lock` whose PID is a running `muse`, OpenCode processes, and
+  interactive `agy` processes (`--conversation`/`--resume`/`-r` → `yes`, bare
+  working-directory match → newest-only `unknown`).
   A lock file alone never means running — stale locks are common.
-- **Subagent and guardian threads** (Codex, OpenCode) are hidden by default
+- **Subagent and guardian threads** (Codex, OpenCode, Antigravity) are hidden by default
   and counted in `census.<tool>.hidden_subagents`; report the count in the
   coverage footer. `--include-subagents` lists them.
 - A transcript that fails to parse is listed with `unreadable: true` and

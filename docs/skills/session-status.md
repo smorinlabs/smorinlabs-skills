@@ -54,8 +54,14 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
-For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location).
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
+For development, link the cloned skill into `~/.agents/skills` (shared by Codex
+and Antigravity).
 
 ## Example session
 

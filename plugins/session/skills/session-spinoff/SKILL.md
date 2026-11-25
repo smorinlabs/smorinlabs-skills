@@ -1,9 +1,9 @@
 ---
 name: session-spinoff
 allowed-tools: Bash, Read, Skill, AskUserQuestion
-argument-hint: "[idea] [--new | --session <label|id>] [--name <session-name>] [--repo <name|path>] [--claude | --codex | --muse] [--dry-run]"
+argument-hint: "[idea] [--new | --session <label|id>] [--name <session-name>] [--repo <name|path>] [--claude | --codex | --muse | --agy] [--dry-run]"
 arguments: [idea]
-description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, or Muse agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), moving a running conversation to another Rex session (session-move), or general Rex tab and session control (rex).
+description: Spin an idea that came up mid-session (a bug, feature, or fix, often in another repo) off into a fresh Claude Code, Codex, Muse, or Antigravity (agy) agent in a Rex tab, on a new worktree, with a self-contained brief as its first prompt, so the current session keeps its focus and context. Use when the user says "spin this off", "launch this in Rex", "start a new session for this in <repo>", or wants a side idea worked on separately. Not for continuing the current work elsewhere (session-handoff), forking this conversation (agent-fork), moving a running conversation to another Rex session (session-move), or general Rex tab and session control (rex).
 ---
 
 # session-spinoff
@@ -161,9 +161,9 @@ Combine the open items into a single AskUserQuestion:
   options; the built-in Other takes any other session by label. The first
   session is marked Recommended only when it is tier 1 or its label clearly
   relates; otherwise "New session" is the recommendation.
-- **Agent** (if `agent` is null): `claude`, `codex`, `muse`, with
-  `current_agent` listed first and marked Recommended. Outside Rex
-  `current_agent` is null; recommend `claude` then.
+- **Agent** (if `agent` is null): `claude`, `codex`, `muse`, `agy` (Antigravity,
+  launched with `agy -i <brief>`), with `current_agent` listed first and marked
+  Recommended. Outside Rex `current_agent` is null; recommend `claude` then.
 - **Launch directory** (always): the step-5b proposal first and marked
   Recommended, with why; the worktree root as the alternative when they
   differ. When the proposal is the worktree root, offer it with the nearest
@@ -280,4 +280,5 @@ Return to session A's work.
 - `repo-finder` — resolves the target repo (step 3).
 - `rex` — the full Rex CLI guide (`rex skill show`).
 - `agent-fork` — copies *this* conversation and its dirty files into a
-  worktree of the same repo; the opposite trade-off.
+  worktree of the same repo; the opposite trade-off (not yet available for
+  Antigravity `agy` — use `session-spinoff` or `session-handoff` instead).

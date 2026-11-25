@@ -1,0 +1,11 @@
+{
+  "factor-harness-session-start": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "./hooks/run-hook.cmd session-start --antigravity",
+        "timeout": 10
+      }
+    ]
+  }
+}

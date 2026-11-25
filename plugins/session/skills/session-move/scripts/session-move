@@ -51,10 +51,10 @@ import tempfile
 import time
 from pathlib import Path
 
-AGENTS = ("claude", "codex", "muse")
-NAMES = {"claude": "Claude Code", "codex": "Codex", "muse": "Muse"}
+AGENTS = ("claude", "codex", "muse", "agy")
+NAMES = {"claude": "Claude Code", "codex": "Codex", "muse": "Muse", "agy": "Antigravity"}
 RESUME = {"claude": ["claude", "--resume"], "codex": ["codex", "resume"],
-          "muse": ["muse", "resume"]}
+          "muse": ["muse", "resume"], "agy": ["agy", "--conversation"]}
 
 # Run the command ("$@"), then replace this shell with an interactive login shell ("$0" is
 # the shell's own path), so a tab stays open at a prompt when its agent exits. The same
@@ -115,7 +115,7 @@ def refusals(f: dict) -> list[str]:
         out.append(f"the window has {f['panes']} panes; only a window with exactly one pane can move")
     agent = f["agent"]
     if not agent:
-        out.append("the window is not running Claude Code, Codex, or Muse "
+        out.append("the window is not running Claude Code, Codex, Muse, or Antigravity "
                    f"(foreground: {f.get('foreground') or 'unknown'})")
     elif not f["conversation_id"]:
         out.append(f"cannot tell which {NAMES[agent]} conversation the window runs "
@@ -178,6 +178,9 @@ def match_conversation(rows: list[dict], pid: int | None, cwd: str | None,
                 and os.path.realpath(r["spawn_dir"]) == here]
     if wanted:
         same_dir = [r for r in same_dir if r.get("id") == wanted]
+        if not same_dir:
+            same_dir = [r for r in rows if r.get("id") == wanted and r.get("live") in ("yes", "unknown")
+                        and r.get("spawn_dir") and os.path.realpath(r["spawn_dir"]) == here]
     if len(same_dir) == 1:
         return same_dir[0], ""
     if not same_dir:
@@ -217,6 +220,14 @@ def turn_open(agent: str, lines) -> bool | None:
                 state = True
             elif kind == "terminal":
                 state = False
+        elif agent == "agy":
+            src, rtype = rec.get("source"), rec.get("type")
+            if src == "USER_EXPLICIT" and rtype == "USER_INPUT":
+                state = True
+            elif src == "MODEL" and rtype == "PLANNER_RESPONSE":
+                state = not (rec.get("status") == "DONE" and not rec.get("tool_calls"))
+            elif src == "MODEL" and rtype == "GENERIC":
+                state = True
     return state
 
 
@@ -254,11 +265,12 @@ class TurnReader:
         return self.state.get(path)
 
 
-CALLER_VARS = {"claude": "CLAUDE_CODE_SESSION_ID", "codex": "CODEX_THREAD_ID", "muse": None}
+CALLER_VARS = {"claude": "CLAUDE_CODE_SESSION_ID", "codex": "CODEX_THREAD_ID",
+               "muse": None, "agy": "ANTIGRAVITY_CONVERSATION_ID"}
 
 
 def ancestor_agent(name: str) -> str | None:
-    """claude, codex, or muse for an ancestor's argv0; Codex runs commands from its
+    """claude, codex, muse, or agy for an ancestor's argv0; Codex runs commands from its
     app-server or codex-code-mode-host, Muse as muse-bin-<version>."""
     base = os.path.basename(name.lstrip("-")).split("-bin-")[0]
     if base.startswith("codex"):
@@ -284,6 +296,8 @@ def caller_identity(env, ancestors: list[str]) -> tuple[str | None, str | None]:
         return "codex", env["CODEX_THREAD_ID"]
     if env.get("CLAUDE_CODE_SESSION_ID"):
         return "claude", env["CLAUDE_CODE_SESSION_ID"]
+    if env.get("ANTIGRAVITY_CONVERSATION_ID"):
+        return "agy", env["ANTIGRAVITY_CONVERSATION_ID"]
     return None, None
 
 
@@ -570,8 +584,16 @@ def claude_registry(pid: int) -> dict | None:
         return None
 
 
+def agy_transcript_path(conversation_id: str) -> str | None:
+    base = (Path(os.environ["ANTIGRAVITY_APP_DATA_DIR"])
+            if os.environ.get("ANTIGRAVITY_APP_DATA_DIR")
+            else Path.home() / ".gemini" / "antigravity-cli")
+    path = base / "brain" / conversation_id / ".system_generated" / "logs" / "transcript.jsonl"
+    return str(path) if path.is_file() else None
+
+
 def inventory_rows(agent: str) -> tuple[list[dict], str]:
-    """Live Codex or Muse conversations, via the sibling session-inventory."""
+    """Live Codex, Muse, or Antigravity conversations, via the sibling session-inventory."""
     inv = (Path(__file__).resolve().parent.parent.parent
            / "session-agent-list" / "scripts" / "session-inventory")
     if not inv.exists():
@@ -687,6 +709,12 @@ def make_plan(to: str, session_arg: str | None, window_arg: str | None,
         reg = claude_registry(pid) or {}
         conversation_id, status = reg.get("sessionId"), reg.get("status")
         note = "" if reg else f"no ~/.claude/sessions/{pid}.json"
+    elif agent == "agy" and own_block and block.get("block_id") == own_block \
+            and caller_agent == "agy" and caller_conversation:
+        conversation_id = caller_conversation
+        transcript = agy_transcript_path(conversation_id)
+        quiet = Ports().mtime_age(transcript) if transcript else None
+        open_turn = TurnReader().open("agy", transcript) if transcript else None
     elif agent:
         rows, note = inventory_rows(agent)
         row, note = match_conversation(rows, pid, fg.get("cwd"), conversation_arg) if rows \
@@ -839,10 +867,11 @@ def go(armed: dict, wait: bool) -> tuple[dict, int]:
                                      or check["same_conversation"] is not None)
 
     _wait(ports, done, RESUME_TIMEOUT)
-    if check["resumed"] and armed["agent"] == "muse":
-        row = next((r for r in inventory_rows("muse")[0]
+    if check["resumed"] and armed["agent"] in ("muse", "agy"):
+        agent_name = armed["agent"]
+        row = next((r for r in inventory_rows(agent_name)[0]
                     if r.get("pid") == armed["handoff_pid"]), None)
-        check = check_resumed(armed, {"foreground": {"argv0": "muse", "pid": armed["handoff_pid"]}},
+        check = check_resumed(armed, {"foreground": {"argv0": agent_name, "pid": armed["handoff_pid"]}},
                               (row or {}).get("id"))
     src = armed["source"]
     result |= check

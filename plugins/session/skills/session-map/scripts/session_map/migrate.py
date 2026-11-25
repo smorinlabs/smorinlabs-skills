@@ -41,7 +41,7 @@ def import_prototype(raw, config):
             "project_ids": [projects[item["project"]]] if item.get("project") in projects else []}
     for item in raw["sessions"]:
         manager = item.get("manager")
-        agent = {"Claude Code": "claude", "Codex": "codex", "Muse": "muse", "OpenCode": "opencode"}.get(item.get("agent"), item.get("agent", "unknown"))
+        agent = {"Claude Code": "claude", "Codex": "codex", "Muse": "muse", "OpenCode": "opencode", "Antigravity": "agy"}.get(item.get("agent"), item.get("agent", "unknown"))
         if manager == "Rex" and all(item.get(k) for k in ("workspace_id", "window_id", "pane_id")):
             source = "rex"
             key = identity("location", data["machine_id"], source, item["workspace_id"], item["window_id"], item["pane_id"])

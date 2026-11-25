@@ -5,9 +5,10 @@
 # ///
 """session-inventory — read-only inventory of agent sessions on this machine.
 
-Covers Claude Code, Codex, Muse, and OpenCode. Small-CLI (verb-first) per the
-CLI Design Standard v1.4.14; see docs/session-inventory-cli.md in the session
-plugin for the interface spec. Stdlib only. Never writes to any store.
+Covers Claude Code, Codex, Muse, OpenCode, and Antigravity (agy). Small-CLI
+(verb-first) per the CLI Design Standard v1.4.14; see
+docs/session-inventory-cli.md in the session plugin for the interface spec.
+Stdlib only. Never writes to any store.
 """
 
 from __future__ import annotations
@@ -26,14 +27,28 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 CACHE_VERSION = 1
-TOOLS = ("claude", "codex", "muse", "opencode")
+TOOLS = ("claude", "codex", "muse", "opencode", "agy")
 TAIL_BYTES = 256 * 1024
 HEAD_LINES = 60
 CODEX_HIDDEN_SOURCES = {"subagent", "guardian_review"}
+AGY_TRANSCRIPT_LINE_MAX = 65536
+AGY_NON_TUI_SUBCOMMANDS = {
+    "acp", "agent", "agents", "changelog", "help", "install", "mcp",
+    "mic-serve", "models", "plugin", "plugins", "remote-control", "update",
+}
+AGY_VALUE_FLAGS = {
+    "--add-dir", "--agent", "--conversation", "--effort", "-i",
+    "--input-format", "--json-schema", "--log-file", "--mode", "--model",
+    "--output-format", "-p", "--print", "--print-timeout", "--project",
+    "--prompt", "--prompt-interactive", "-r", "--resume", "--settings",
+}
+AGY_PRINT_FLAGS = {"-p", "--print", "--prompt"}
+AGY_CONVERSATION_FLAGS = {"--conversation", "--resume", "-r"}
 
 
 class SourceError(Exception):
@@ -651,6 +666,255 @@ def scan_opencode(procs: dict[int, list[str]]) -> tuple[list[dict], dict, int]:
     return records, {"status": "ok", "path": str(db_path), "legacy_only": len(legacy_ids)}, hidden
 
 
+# --- Antigravity (agy) --------------------------------------------------------
+
+def agy_timestamp(value) -> str | None:
+    """Normalize ISO 8601, SQLite datetime, Go time.Time, or epoch seconds to UTC Z."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return iso_from_epoch(float(value))
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    text = re.sub(r"\s+m=[+-]?[0-9.]+$", "", text)
+    text = re.sub(r"(\s*[+-]\d{2}:?\d{2})\s+[A-Za-z][A-Za-z0-9_/+:-]*$", r"\1", text)
+    text = re.sub(r"\s*([+-])(\d{2})(\d{2})$", r"\1\2:\3", text)
+    text = re.sub(r"\s+([+-]\d{2}:\d{2})$", r"\1", text)
+    if text.endswith(" UTC"):
+        text = text[:-4] + "+00:00"
+    text = re.sub(r"\.(\d{6})\d+", r".\1", text)
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_agy_workspace_uris(raw) -> str | None:
+    """Decode the first local workspace path from conversation_summaries.workspace_uris."""
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", "replace")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    candidates: list[str] = []
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, list):
+        candidates = [item.strip() for item in parsed if isinstance(item, str) and item.strip()]
+    elif isinstance(parsed, str):
+        candidates = [parsed.strip()] if parsed.strip() else []
+    elif "\n" in text:
+        candidates = [line.strip() for line in text.splitlines() if line.strip()]
+    elif ",file://" in text:
+        candidates = [part.strip() for part in re.split(r",(?=\s*file://)", text) if part.strip()]
+    else:
+        candidates = [text]
+
+    for item in candidates:
+        if item.startswith("file://"):
+            uri = urllib.parse.urlparse(item)
+            if uri.scheme == "file" and uri.netloc in ("", "localhost"):
+                path = urllib.parse.unquote(uri.path)
+                if path:
+                    return path
+        elif item.startswith("/"):
+            return item
+    return None
+
+
+def agy_created(path: Path, cache: MetadataCache | None = None) -> str | None:
+    """Read created_at from line 1 of an Antigravity transcript.jsonl (bounded, cacheable)."""
+    def parse(raw: bytes) -> dict:
+        try:
+            text = raw.decode("utf-8", "replace")
+            obj = cache.parse(text) if cache else json.loads(text)
+            if not isinstance(obj, dict):
+                return {"created": None}
+            return {"created": agy_timestamp(obj.get("created_at"))}
+        except (ValueError, TypeError, AttributeError):
+            return {"created": None}
+
+    def load(previous: dict, entry: dict) -> dict:
+        try:
+            with path.open("rb") as fh:
+                raw = fh.readline(AGY_TRANSCRIPT_LINE_MAX)
+        except OSError:
+            return {"created": None}
+        if cache:
+            cache.stats["bytes_read"] += len(raw)
+            return cache.section(raw, "head", previous, entry, parse)
+        return parse(raw)
+
+    try:
+        result = cache.read(path, "agy-created", load) if cache else load({}, {})
+    except OSError:
+        return None
+    return result.get("created")
+
+
+def agy_process_info(argv: list[str]) -> tuple[bool, str | None, bool]:
+    """Return (is_session_process, explicit_conversation_id, is_print_mode) for an agy argv."""
+    pattern = re.compile(r"agy(-bin[-.\w]*)?")
+    start = next((i + 1 for i, tok in enumerate(argv[:2]) if pattern.fullmatch(Path(tok).name)), None)
+    if start is None:
+        return False, None, False
+    args = argv[start:]
+    named: str | None = None
+    is_print = False
+    first_positional: str | None = None
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "--":
+            break
+        flag, has_eq, val = tok.partition("=")
+        if has_eq:
+            if flag in AGY_CONVERSATION_FLAGS and val:
+                named = val
+            if flag in AGY_PRINT_FLAGS:
+                is_print = True
+            i += 1
+            continue
+        if tok in AGY_CONVERSATION_FLAGS:
+            if i + 1 < len(args):
+                named = args[i + 1]
+                i += 2
+                continue
+            i += 1
+            continue
+        if tok in AGY_PRINT_FLAGS:
+            is_print = True
+            i += 1
+            continue
+        if tok in AGY_VALUE_FLAGS:
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        if first_positional is None:
+            first_positional = tok
+        i += 1
+    if first_positional in AGY_NON_TUI_SUBCOMMANDS and not is_print:
+        return False, None, False
+    return True, named, is_print
+
+
+def agy_directory_liveness(sessions_in_dir: list[dict], pid: int) -> dict[str, tuple[str, str]]:
+    """Decide liveness for agy sessions in a directory running bare `agy` / `agy -c`."""
+    if not sessions_in_dir:
+        return {}
+    newest = sessions_in_dir[0]
+    return {newest["id"]: ("unknown", f"agy pid {pid} running in this directory; newest session assumed")}
+
+
+def scan_agy(home: Path, procs: dict[int, list[str]],
+             cache: MetadataCache | None = None) -> tuple[list[dict], dict, int]:
+    root = home / ".gemini" / "antigravity-cli"
+    db_path = root / "conversation_summaries.db"
+    if not db_path.is_file():
+        return [], {"status": "absent", "path": str(db_path)}, 0
+    try:
+        with open_ro(db_path) as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(conversation_summaries)")}
+            required = {"conversation_id", "title", "last_modified_time", "workspace_uris"}
+            if not required <= cols:
+                raise SourceError(f"agy: {db_path}: missing required columns in conversation_summaries")
+            preview_col = "preview" if "preview" in cols else "''"
+            parent_col = "parent_conversation_id" if "parent_conversation_id" in cols else "''"
+            depth_col = "nesting_depth" if "nesting_depth" in cols else "0"
+            rows = db.execute(
+                f"SELECT conversation_id, title, {preview_col}, last_modified_time,"
+                f" workspace_uris, {parent_col}, {depth_col} FROM conversation_summaries"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise SourceError(f"agy: {db_path}: {exc}") from exc
+
+    records, hidden = [], 0
+    for sid, title, preview, last_modified, workspace_uris, parent_id, nesting_depth in rows:
+        if not isinstance(sid, str) or not sid.strip():
+            continue
+        sid = sid.strip()
+        rec = new_record("agy", sid)
+        rec["live_basis"] = "no agy process"
+        transcript_path = root / "brain" / sid / ".system_generated" / "logs" / "transcript.jsonl"
+        has_transcript = transcript_path.is_file()
+        rec["transcript"] = str(transcript_path) if has_transcript else None
+        try:
+            title_text = title.strip() if isinstance(title, str) else ""
+            preview_text = preview.strip() if isinstance(preview, str) else ""
+            rec["title"] = title_text or preview_text or None
+            rec["spawn_dir"] = parse_agy_workspace_uris(workspace_uris)
+            rec["updated"] = agy_timestamp(last_modified)
+            if rec["updated"] is None and has_transcript:
+                try:
+                    rec["updated"] = iso_from_epoch(transcript_path.stat().st_mtime)
+                except OSError:
+                    pass
+            if has_transcript:
+                rec["created"] = agy_created(transcript_path, cache)
+            depth = int(nesting_depth) if nesting_depth is not None else 0
+            parent = parent_id.strip() if isinstance(parent_id, str) and parent_id.strip() else None
+            if depth > 0:
+                rec["lineage"] = {"kind": "subagent", "parent_id": parent}
+                rec["_hidden"] = True
+                hidden += 1
+            elif parent:
+                rec["lineage"] = {"kind": "fork", "parent_id": parent}
+        except (TypeError, ValueError):
+            rec["unreadable"] = True
+        records.append(rec)
+
+    by_dir: dict[str, list[dict]] = {}
+    for rec in records:
+        if not rec.get("_hidden") and not rec["unreadable"] and rec["spawn_dir"]:
+            for key in {rec["spawn_dir"], os.path.realpath(rec["spawn_dir"])}:
+                by_dir.setdefault(key, []).append(rec)
+    known = {rec["id"]: rec for rec in records}
+    for pid, argv in procs.items():
+        is_agy, named, is_print = agy_process_info(argv)
+        if not is_agy:
+            continue
+        if named is not None:
+            if named in known:
+                known[named].update(live="yes", live_host="cli", pid=pid,
+                                    live_basis=f"agy pid {pid} --conversation {named}")
+            continue
+        if is_print:
+            continue
+        cwd = process_cwd(pid)
+        if not cwd:
+            continue
+        group = by_dir.get(os.path.realpath(cwd)) or by_dir.get(cwd) or []
+        group = sorted(group, key=lambda r: r["updated"] or "", reverse=True)
+        for sid, (live, basis) in agy_directory_liveness(group, pid).items():
+            if known[sid]["live"] != "yes":
+                known[sid].update(live=live, live_basis=basis, pid=pid if live == "yes" else None)
+
+    for rec in records:
+        if rec["unreadable"]:
+            continue
+        if rec["live"] == "yes":
+            rec["resume_blocked"] = "running"
+        elif not rec["spawn_dir"]:
+            rec["resume_blocked"] = "no_workspace"
+        else:
+            rec["resume"] = f"{cd_prefix(rec['spawn_dir'])}agy --conversation {rec['id']}"
+    return records, {"status": "ok", "path": str(db_path)}, hidden
+
+
 # --- list ---------------------------------------------------------------------
 
 def parse_since(value: str) -> str:
@@ -667,7 +931,7 @@ def parse_since(value: str) -> str:
 
 def collect(tools: list[str], cache: MetadataCache | None = None) -> tuple[list[dict], dict, dict, list[str]]:
     home = Path.home()
-    procs = processes() if {"codex", "muse", "opencode"} & set(tools) else {}
+    procs = processes() if {"codex", "muse", "opencode", "agy"} & set(tools) else {}
     sessions, census, sources, failed = [], {}, {}, []
     for tool in tools:
         hidden = 0
@@ -678,8 +942,10 @@ def collect(tools: list[str], cache: MetadataCache | None = None) -> tuple[list[
                 recs, src, hidden = scan_codex(home, procs, cache)
             elif tool == "muse":
                 recs, src = scan_muse(home, procs)
-            else:
+            elif tool == "opencode":
                 recs, src, hidden = scan_opencode(procs)
+            else:
+                recs, src, hidden = scan_agy(home, procs, cache)
         except (SourceError, OSError) as exc:
             recs, src = [], {"status": "error", "message": str(exc)}
             failed.append(tool)
@@ -737,7 +1003,7 @@ def cmd_list(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="session-inventory",
-        description="Read-only inventory of Claude Code, Codex, Muse, and OpenCode sessions.")
+        description="Read-only inventory of Claude Code, Codex, Muse, OpenCode, and Antigravity sessions.")
     parser.add_argument("-V", "--version", action="version", version=f"session-inventory {VERSION}")
     add_output_flags(parser, default="text")
     sub = parser.add_subparsers(dest="command")

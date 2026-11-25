@@ -77,7 +77,8 @@ def test_the_shell_that_runs_the_wrapper_is_chosen_as_session_spinoff_chooses_it
 @pytest.mark.parametrize(
     "argv0, expected",
     [("claude", "claude"), ("/opt/homebrew/bin/codex", "codex"), ("-muse", "muse"),
-     ("/opt/tools/bin/muse-bin-1.4.20-R8619.1", "muse"), ("/bin/zsh", None), ("", None)],
+     ("/opt/tools/bin/muse-bin-1.4.20-R8619.1", "muse"),
+     ("/opt/local/bin/agy", "agy"), ("/bin/zsh", None), ("", None)],
 )
 def test_detect_agent(argv0, expected):
     assert sm.detect_agent({"foreground": {"argv0": argv0}}) == expected
@@ -93,7 +94,7 @@ def test_a_movable_window_has_no_refusals():
         ({"source_host": "h2"}, "different computer"),
         ({"source_host": None}, "cannot confirm"),
         ({"panes": 2}, "2 panes"),
-        ({"agent": None, "foreground": "/bin/zsh"}, "not running Claude Code, Codex, or Muse"),
+        ({"agent": None, "foreground": "/bin/zsh"}, "not running Claude Code, Codex, Muse, or Antigravity"),
         ({"conversation_id": None, "identity_note": "no inventory row for pid 7"}, "cannot tell which"),
         ({"status": "busy"}, "status: busy"),
         ({"status": "shell"}, "background shell"),
@@ -214,7 +215,7 @@ def test_self_move_follows_and_codex_passes_its_transcript(monkeypatch):
 @pytest.mark.parametrize(
     "agent, expected",
     [("claude", ["claude", "--resume", "x"]), ("codex", ["codex", "resume", "x"]),
-     ("muse", ["muse", "resume", "x"])],
+     ("muse", ["muse", "resume", "x"]), ("agy", ["agy", "--conversation", "x"])],
 )
 def test_the_same_agent_resumes_the_same_conversation(agent, expected):
     assert sm.resume_argv(agent, "x") == expected
@@ -358,6 +359,12 @@ OTHER = json.dumps({"type": "response_item", "payload": {"type": "message"}})
         ("muse", [muse_line("started"), muse_line("assistant_message_committed")], True),
         ("muse", [muse_line("started"), muse_line("terminal")], False),
         ("muse", [muse_line("terminal"), muse_line("started")], True),
+        ("agy", [json.dumps({"source": "USER_EXPLICIT", "type": "USER_INPUT"})], True),
+        ("agy", [json.dumps({"source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE",
+                             "tool_calls": [{"name": "read_file"}]})], True),
+        ("agy", [json.dumps({"source": "MODEL", "type": "GENERIC"})], True),
+        ("agy", [json.dumps({"source": "MODEL", "type": "PLANNER_RESPONSE", "status": "DONE",
+                             "content": "All done."})], False),
         ("codex", [OTHER, "not json"], None),  # no turn records: unknown, not "ended"
     ],
 )
@@ -469,10 +476,22 @@ def test_self_is_this_pane_or_the_callers_own_conversation(pane_block, own_block
     "env, expected",
     [({"CODEX_THREAD_ID": "c1"}, ("codex", "c1")),
      ({"CLAUDE_CODE_SESSION_ID": "k1"}, ("claude", "k1")),
+     ({"ANTIGRAVITY_CONVERSATION_ID": "a1"}, ("agy", "a1")),
      ({}, (None, None))],
 )
 def test_the_caller_is_named_by_its_agent(env, expected):
     assert sm.caller_identity(env, []) == expected  # no ancestry: the variables decide
+
+
+def test_agy_ancestor_selects_antigravity_conversation_id():
+    env = {"CLAUDE_CODE_SESSION_ID": "outer", "ANTIGRAVITY_CONVERSATION_ID": "inner-agy"}
+    assert sm.caller_identity(env, ["zsh", "/opt/local/bin/agy", "claude"]) == ("agy", "inner-agy")
+
+
+def test_match_conversation_allows_explicit_id_for_unknown_agy_row():
+    rows = [{"id": "agy-1", "pid": None, "live": "unknown", "spawn_dir": "/work/z"}]
+    assert sm.match_conversation(rows, 555, "/work/z")[0] is None
+    assert sm.match_conversation(rows, 555, "/work/z", "agy-1")[0]["id"] == "agy-1"
 
 
 # ── P73-TS13: independent review of PR #116 (Codex, 2026-11-14) ──────────

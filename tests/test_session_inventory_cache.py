@@ -4,6 +4,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -288,3 +289,93 @@ def test_deleted_source_after_read_preserves_metadata_and_evicts_cache(roots):
     assert cache.read(path, "test", deleting_loader) == {"value": "new observation"}
     assert cache.stats["raced_files"] == 1
     assert cache.entries == {}
+
+
+def agy_store(home: Path, sid: str = SID) -> Path:
+    root = home / ".gemini" / "antigravity-cli"
+    root.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(root / "conversation_summaries.db")
+    db.execute(
+        "CREATE TABLE conversation_summaries ("
+        "conversation_id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', "
+        "preview TEXT NOT NULL DEFAULT '', last_modified_time DATETIME NOT NULL, "
+        "workspace_uris TEXT NOT NULL, parent_conversation_id TEXT NOT NULL DEFAULT '', "
+        "nesting_depth INTEGER NOT NULL DEFAULT 0)"
+    )
+    db.execute(
+        "INSERT INTO conversation_summaries VALUES (?,?,?,?,?,?,?)",
+        (sid, "Cached agy session", "", "2026-11-25T04:00:00Z", '["file:///work/example"]', "", 0),
+    )
+    db.commit()
+    db.close()
+    tpath = root / "brain" / sid / ".system_generated" / "logs" / "transcript.jsonl"
+    return write_lines(tpath, [
+        {"step_index": 0, "source": "USER_EXPLICIT", "type": "USER_INPUT",
+         "created_at": "2026-11-25T03:02:49Z", "content": "hello"},
+    ])
+
+
+def test_agy_created_cache_hits_and_append_reuses_head_section(roots, monkeypatch):
+    home, cache_dir = roots
+    tpath = agy_store(home)
+    first = inventory.MetadataCache(cache_dir)
+    recs, src, hidden = inventory.scan_agy(home, {}, first)
+    assert src["status"] == "ok" and hidden == 0
+    assert recs[0]["created"] == "2026-11-25T03:02:49Z"
+    assert first.stats["parsed_files"] == 1
+    first.save()
+
+    second = inventory.MetadataCache(cache_dir)
+    monkeypatch.setattr(second, "parse", lambda _: (_ for _ in ()).throw(AssertionError("reparsed")))
+    recs2, _, _ = inventory.scan_agy(home, {}, second)
+    assert recs2 == recs
+    assert second.stats["hits"] == 1
+    assert second.stats["bytes_read"] == second.stats["parsed_records"] == 0
+
+    # Appending turn 1 changes stat signature, but line 1 hash matches -> section reused without parsing!
+    with tpath.open("ab") as fh:
+        fh.write(b'{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","content":"hi"}\n')
+    third = inventory.MetadataCache(cache_dir)
+    monkeypatch.setattr(third, "parse", lambda _: (_ for _ in ()).throw(AssertionError("reparsed head")))
+    recs3, _, _ = inventory.scan_agy(home, {}, third)
+    assert recs3[0]["created"] == "2026-11-25T03:02:49Z"
+    assert third.stats["misses"] == 1 and third.stats["sections_reused"] == 1
+    assert third.stats["parsed_records"] == 0
+    third.save()
+
+    # Liveness is never cached: passing a live agy process flips live to yes on warm cache
+    fourth = inventory.MetadataCache(cache_dir)
+    recs4, _, _ = inventory.scan_agy(home, {4321: ["agy", "--conversation", SID]}, fourth)
+    assert recs4[0]["live"] == "yes" and recs4[0]["pid"] == 4321 and recs4[0]["resume"] is None
+    assert fourth.stats["hits"] == 1
+
+
+def test_agy_3tier_liveness_unit_in_sandbox(roots, monkeypatch):
+    home, _ = roots
+    agy_store(home, SID)
+    db = sqlite3.connect(home / ".gemini/antigravity-cli/conversation_summaries.db")
+    older = "22222222-2222-4222-8222-222222222222"
+    db.execute(
+        "INSERT INTO conversation_summaries VALUES (?,?,?,?,?,?,?)",
+        (older, "Older", "", "2026-11-25T01:00:00Z", '["file:///work/example"]', "", 0),
+    )
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(inventory, "process_cwd", lambda pid: "/work/example" if pid == 77 else None)
+    # Tier 2 bare agy: only newest is unknown; non-TUI subcommands & -p print mode ignored
+    procs = {
+        77: ["/opt/local/bin/agy", "-c"],
+        88: ["agy", "acp", "--stdio"],
+        89: ["agy", "-p", "hi"],
+    }
+    recs, _, _ = inventory.scan_agy(home, procs)
+    by = {r["id"]: r for r in recs}
+    assert by[SID]["live"] == "unknown" and by[SID]["resume"] is not None
+    assert by[older]["live"] == "no"
+
+    # Tier 1 explicit --conversation / --resume / -r overrides to live=yes and blocks resume
+    recs2, _, _ = inventory.scan_agy(home, {99: ["agy", "--resume", older]})
+    by2 = {r["id"]: r for r in recs2}
+    assert by2[older]["live"] == "yes" and by2[older]["pid"] == 99 and by2[older]["resume_blocked"] == "running"
+    assert by2[SID]["live"] == "no"

@@ -24,9 +24,15 @@ every load-bearing artifact (plan, design, spec) is vetted — exists · committ
 silently inherits a missing, untraveled, or stub referenced doc (its quality
 would otherwise be `min(handoff, doc)`). Delivery adapts to size: short
 handoffs print an inline prompt block; involved ones write a `docs/handoffs/`
-file plus one launch line. Evidence gathering reuses `session-recap`'s
-`transcript_digest.py` via a verified symlink-safe recipe and records a
-one-line effectiveness note each run.
+file plus one launch line. Evidence gathering reuses `session-recap`'s `transcript_digest.py` via a
+verified symlink-safe recipe — auto-detecting both Claude Code
+(`$CLAUDE_CODE_SESSION_ID`) and Antigravity (`ANTIGRAVITY_AGENT=1`,
+`$ANTIGRAVITY_CONVERSATION_ID`, reading
+`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`)
+— and records a one-line effectiveness note each run when opted in. Launch lines
+cover pasting into a fresh session across tools as well as Antigravity's direct
+interactive launch (`agy -i "<handoff>"`) and in-place resume
+(`agy --conversation <id>`).
 
 **Triggers on:** "hand this off", "write a handoff", "start a fresh/new session
 with this context", "continue this in a new window/session", "pick this up on
@@ -51,8 +57,14 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
-For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location).
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
+For development, link the cloned skill into `~/.agents/skills` (shared by Codex
+and Antigravity).
 
 ## Example session
 

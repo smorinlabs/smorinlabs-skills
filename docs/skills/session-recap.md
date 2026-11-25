@@ -2,7 +2,8 @@
 
 Reconstructs where a coding session stands when it's been left idle, compacted,
 or reopened cold — or mid-session on request. Gathers the session arc from the
-transcript (bundled digest script keyed on `$CLAUDE_CODE_SESSION_ID`), live
+transcript (bundled digest script keyed on `$CLAUDE_CODE_SESSION_ID` or
+`$ANTIGRAVITY_CONVERSATION_ID`), live
 git/branch/worktree state, PR and CI via `gh`, each stream's plan-of-record
 checklist, and what moved while you were away. Read-only — it gathers and
 reports, never commits, pushes, cleans up, or edits files.
@@ -49,8 +50,14 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
-For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location).
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
+For development, link the cloned skill into `~/.agents/skills` (shared by Codex
+and Antigravity).
 
 ## Example session
 

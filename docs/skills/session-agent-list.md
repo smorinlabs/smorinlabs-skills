@@ -1,24 +1,24 @@
 # session-agent-list
 
-The session plugin’s finder: discovers Claude Code, Codex, Muse, and
-OpenCode sessions across the machine and renders them as action-ready cards
-in a converged 22-element format — ephemeral ordinals (`[1]`, stable within the
-conversation), end-state triage on its own line (`●` open mid-work / `⇥`
-handed off / `✔` closed clean / `◒` closed with loose ends), the working set
+The session plugin’s finder: discovers Claude Code, Codex, Muse, OpenCode, and
+Antigravity (`agy`) sessions across the machine and renders them as action-ready
+cards in a converged 22-element format — ephemeral ordinals (`[1]`, stable
+within the conversation), end-state triage on its own line (`●` open mid-work /
+`⇥` handed off / `✔` closed clean / `◒` closed with loose ends), the working set
 (spawn dir, repos, ⑂ worktrees — multi-repo is first-class), lineage (↳ forks,
-⇤/⇥ handoff in/out — a written-but-unread handoff shows as "baton in the
-air"), a three-horizon story (Lately = hours, TLDR = session, longer arc =
-months), each tool's own session name beside the UUID (Muse `copper-umbra`,
-Codex thread name, Claude Code `/rename` title, OpenCode slug), and
-copy-paste commands. The card changes which actions it hands you: open
-sessions lead with `cd <spawn-dir> && claude --resume <uuid>` (or `codex
-resume <uuid>`, `muse resume <uuid>`, `opencode --session <id>`),
-handed-off sessions lead with the handoff doc, closed sessions get
-transcript-only, and a session running right now (`live`) gets no resume
-command at all — it names the PID and tmux pane where it runs. Listings open with an end-state census, split
-into age bands when the results span months, and group by shared milestone —
-work items always in triple form (ID + plain name + one-line definition),
-never bare.
+⇤/⇥ handoff in/out — a written-but-unread handoff shows as "baton in the air"),
+a three-horizon story (Lately = hours, TLDR = session, longer arc = months),
+each tool's own session name beside the UUID (Muse `copper-umbra`, Codex thread
+name, Claude Code `/rename` title, OpenCode slug), and copy-paste commands. The
+card changes which actions it hands you: open sessions lead with
+`cd <spawn-dir> && claude --resume <uuid>` (or `codex resume <uuid>`,
+`muse resume <uuid>`, `opencode --session <id>`,
+`cd <spawn-dir> && agy --conversation <uuid>`), handed-off sessions lead with
+the handoff doc, closed sessions get transcript-only, and a session running
+right now (`live`) gets no resume command at all — it names the PID and tmux
+pane where it runs. Listings open with an end-state census, split into age bands
+when the results span months, and group by shared milestone — work items always
+in triple form (ID + plain name + one-line definition), never bare.
 
 One canonical card, four views: **the default listing renders full cards,
 together** — every found session complete, under the band/group/card
@@ -31,7 +31,7 @@ contract: it never resumes, deletes, or writes — cleanup a `◒` card reveals
 routes to `session-loose-ends`. Discovery runs through the bundled
 read-only `scripts/session-inventory` CLI (stdlib Python; interface in the
 plugin's `docs/session-inventory-cli.md`), which resolves names, liveness,
-hidden subagent threads, and safe commands for all four tools. The binding
+hidden subagent threads, and safe commands for all five tools. The binding
 format spec (glyph budget,
 delimiter ladder, card anatomy, golden example) lives in the skill's
 `references/format-spec.md`.
@@ -45,7 +45,7 @@ not writing handoffs (`session-handoff`), and not building or updating a saved
 HTML project/session map ([session-map](session-map.md)).
 **Arguments:** `[query] [--tool <name>] [--live] [--compact|--exec|--ledger]`
 — an optional free-text/time/repo filter, a tool filter (`claude`, `codex`,
-`muse`, `opencode`; repeatable), running-now only, plus the view flags.
+`muse`, `opencode`, `agy`; repeatable), running-now only, plus the view flags.
 
 ## Install
 
@@ -62,14 +62,20 @@ codex plugin marketplace add smorinlabs/smorinlabs-skills
 codex plugin add session@smorinlabs-skills
 ```
 
+**Antigravity (`agy`):** install the `session` plugin directly:
+
+```sh
+agy plugin install https://github.com/smorinlabs/smorinlabs-skills/tree/main/plugins/session
+```
+
 For development, link the cloned skill into `~/.agents/skills` (Codex's current
-skills location). **Muse and OpenCode** both load skills from
+skills location). **Muse, OpenCode, and Antigravity** also load skills from
 `~/.agents/skills`, so the same dev symlink serves them.
 
 ## Example session
 
 > "Which of my sessions are still open? I think one of them was mid-PR."
-> → The skill runs `session-inventory list --json` across all four tools'
+> → The skill runs `session-inventory list --json` across all five tools'
 > stores, filters
 > to recent activity, classifies each transcript tail, and renders the
 > default listing headed `FOUND 4 SESSIONS · ● 1 open · ⇥ 1 handed off · ✔ 2

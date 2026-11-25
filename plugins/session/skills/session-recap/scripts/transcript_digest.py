@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compact digest of a Claude Code session transcript (JSONL).
+"""Compact digest of a Claude Code or Antigravity session transcript (JSONL).
 
 Session transcripts can be several megabytes — far too large to read into
 context whole. This script extracts only what a recap needs and prints a small
@@ -9,8 +9,10 @@ branch changes, timing, and the last handful of turns leading up to now.
 Locate the transcript by session id (preferred — deterministic):
 
     transcript_digest.py --session "$CLAUDE_CODE_SESSION_ID"
+    transcript_digest.py --session "$ANTIGRAVITY_CONVERSATION_ID"
 
-or point at a file directly (used by tests and for recapping a specific run):
+or run with no arguments to auto-detect from $CLAUDE_CODE_SESSION_ID or
+$ANTIGRAVITY_CONVERSATION_ID, or point at a file directly:
 
     transcript_digest.py path/to/transcript.jsonl
 
@@ -27,6 +29,7 @@ import glob
 import json
 import os
 import re
+import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +45,11 @@ URL_RE = re.compile(r"https?://[^\s)\]>'\"]+")
 DOC_RE = re.compile(r"\b[\w./-]+\.(?:md|mdx|rst|adoc)\b")
 # Common technical tokens that look like tickets but aren't.
 TICKET_DENY = {"UTF", "SHA", "ISO", "RFC", "AES", "RSA", "ASCII", "IPV", "ID", "PKCS"}
+USER_REQUEST_RE = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL)
+AGY_META_BLOCK_RE = re.compile(
+    r"<(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE)>.*?</(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE)>",
+    re.DOTALL,
+)
 
 
 def find_refs(text: str, tickets: set[str], urls: set[str], docs: set[str]) -> None:
@@ -55,7 +63,7 @@ def find_refs(text: str, tickets: set[str], urls: set[str], docs: set[str]) -> N
 
 
 def locate(session_id: str) -> Path | None:
-    """Find the transcript named by a session id across all project dirs.
+    """Find the Claude Code transcript named by a session id across all project dirs.
 
     Session ids are UUIDs, so at most one file matches — which sidesteps having
     to reconstruct the cwd→project-dir path encoding.
@@ -65,6 +73,73 @@ def locate(session_id: str) -> Path | None:
     if not matches:
         return None
     return Path(max(matches, key=lambda p: os.path.getmtime(p)))
+
+
+def locate_agy(conversation_id: str, *, prefer_full: bool = False) -> Path | None:
+    """Find an Antigravity CLI transcript by conversation ID."""
+    base = (
+        Path(os.environ["ANTIGRAVITY_APP_DATA_DIR"])
+        if os.environ.get("ANTIGRAVITY_APP_DATA_DIR")
+        else Path.home() / ".gemini" / "antigravity-cli"
+    )
+    logs_dir = base / "brain" / conversation_id / ".system_generated" / "logs"
+    names = ("transcript_full.jsonl", "transcript.jsonl") if prefer_full else ("transcript.jsonl", "transcript_full.jsonl")
+    for name in names:
+        candidate = logs_dir / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def agy_db_title(path: Path) -> str | None:
+    """Best-effort read-only title lookup from Antigravity's conversation_summaries.db."""
+    # Expected layout: <app_data_dir>/brain/<conversation_id>/.system_generated/logs/transcript*.jsonl
+    parts = path.resolve().parts
+    try:
+        logs_idx = len(parts) - 2
+        if logs_idx < 4 or parts[logs_idx] != "logs" or parts[logs_idx - 1] != ".system_generated":
+            return None
+        conv_id = parts[logs_idx - 2]
+        if parts[logs_idx - 3] != "brain":
+            return None
+        db_path = Path(*parts[: logs_idx - 3]) / "conversation_summaries.db"
+    except IndexError:
+        return None
+    if not db_path.is_file():
+        return None
+    try:
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as db:
+            row = db.execute(
+                "SELECT title, preview FROM conversation_summaries WHERE conversation_id = ?",
+                (conv_id,),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+    if not row:
+        return None
+    title = (row[0] or "").strip() if isinstance(row[0], str) else ""
+    preview = (row[1] or "").strip() if isinstance(row[1], str) else ""
+    return title or preview or None
+
+
+def agy_user_text(content: str) -> str:
+    """Extract the human request from an Antigravity USER_INPUT content blob."""
+    match = USER_REQUEST_RE.search(content)
+    if match:
+        return match.group(1).strip()
+    return AGY_META_BLOCK_RE.sub("", content).strip()
+
+
+def agy_planner_text(record: dict) -> str:
+    """Flatten an Antigravity PLANNER_RESPONSE record to assistant prose + tool names."""
+    parts: list[str] = []
+    content = record.get("content")
+    if isinstance(content, str) and content.strip():
+        parts.append(content.strip())
+    for tc in record.get("tool_calls") or []:
+        if isinstance(tc, dict):
+            parts.append(f"[tool: {tc.get('name', '?')}]")
+    return " ".join(parts).strip()
 
 
 def text_of(content) -> str:
@@ -154,7 +229,7 @@ def day_segments(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("path", nargs="?", help="transcript .jsonl path")
-    ap.add_argument("--session", help="session id (e.g. $CLAUDE_CODE_SESSION_ID)")
+    ap.add_argument("--session", help="session id (e.g. $CLAUDE_CODE_SESSION_ID or $ANTIGRAVITY_CONVERSATION_ID)")
     ap.add_argument("--last", type=int, default=8, help="trailing turns to show")
     ap.add_argument(
         "--prompts-only",
@@ -181,12 +256,15 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     path: Path | None = None
+    prefer_full = bool(args.find)
     if args.path:
         path = Path(args.path)
     elif args.session:
-        path = locate(args.session)
+        path = locate(args.session) or locate_agy(args.session, prefer_full=prefer_full)
     elif os.environ.get("CLAUDE_CODE_SESSION_ID"):
         path = locate(os.environ["CLAUDE_CODE_SESSION_ID"])
+    elif os.environ.get("ANTIGRAVITY_CONVERSATION_ID"):
+        path = locate_agy(os.environ["ANTIGRAVITY_CONVERSATION_ID"], prefer_full=prefer_full)
 
     if path is None or not path.exists():
         print("NO_TRANSCRIPT", file=sys.stderr)
@@ -207,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     scope_spans: dict[tuple[str, str], list[str]] = {}  # pair -> [first_ts, last_ts]
     worktree_state_events = 0
     relocations = 0
+    is_agy = False
 
     for line in path.read_text(errors="replace").splitlines():
         line = line.strip()
@@ -216,9 +295,43 @@ def main(argv: list[str] | None = None) -> int:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(d, dict):
+            continue
         if d.get("isSidechain"):
             continue
         rtype = d.get("type")
+        source = d.get("source")
+        if source in ("USER_EXPLICIT", "MODEL", "SYSTEM") and rtype in (
+            "USER_INPUT",
+            "PLANNER_RESPONSE",
+            "GENERIC",
+            "SYSTEM_MESSAGE",
+        ):
+            is_agy = True
+            ts = d.get("created_at") or ""
+            if ts:
+                first_ts = first_ts or ts
+                last_ts = ts
+            if source == "USER_EXPLICIT" and rtype == "USER_INPUT":
+                role = "user"
+                full = agy_user_text(d.get("content") or "")
+            elif source == "MODEL" and rtype == "PLANNER_RESPONSE":
+                role = "assistant"
+                full = agy_planner_text(d)
+            else:
+                continue
+            if full:
+                find_refs(full, tickets, urls, docs)
+            body = clip(full)
+            if not body:
+                continue
+            if is_human_prompt(role, body):
+                if first_user is None:
+                    first_user = body
+                prompts.append((ts, body))
+            turns.append((ts, role, body))
+            turns_full.append(full)
+            continue
         if rtype == "ai-title":
             title = d.get("aiTitle") or d.get("title") or title
             continue
@@ -266,6 +379,9 @@ def main(argv: list[str] | None = None) -> int:
         turns.append((ts, role, body))
         turns_full.append(full)
 
+    if is_agy and not title:
+        title = agy_db_title(path)
+
     out: list[str] = []
     out.append(f"session_file: {path.name}")
     if title:
@@ -298,6 +414,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.scope:
             out.append("")
             out.append("=== scope history (sidechain excluded) ===")
+            if is_agy and not scope_order:
+                out.append("(Antigravity transcripts do not record per-turn cwd/gitBranch)")
             for cwd, branch in scope_order:
                 first, last = scope_spans[(cwd, branch)]
                 if first == last:
