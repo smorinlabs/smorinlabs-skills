@@ -767,6 +767,9 @@ def _extract_top_level_created_at(text: str) -> object | None:
         except ValueError:
             return None
         if key == "created_at":
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                if i >= n or text[i] not in " \t\r\n,}":
+                    return None
             return val
         while i < n and text[i] in " \t\r\n":
             i += 1

@@ -705,6 +705,12 @@ def test_agy_truncated_line1_reads_only_top_level_created_at(home, world):
             '{"note":"{\\"created_at\\":\\"2020-01-01T00:00:00Z\\"}",'
             '"created_at":1764000000,"content":"' + ("x" * 70000) + '"}'
         ),
+        # Pad so byte 65536 lands inside the numeric timestamp `1764000000`
+        "agy-trunc-cut-epoch": (
+            '{"pad":"'
+            + ("p" * (65536 - len('{"pad":"","created_at":176400')))
+            + '","created_at":1764000000,"content":"tail"}'
+        ),
     }
     db = sqlite3.connect(db_path)
     for sid, line in cases.items():
@@ -725,6 +731,7 @@ def test_agy_truncated_line1_reads_only_top_level_created_at(home, world):
     assert got["agy-trunc-nested-only"]["created"] is None
     assert got["agy-trunc-in-string"]["created"] is None
     assert got["agy-trunc-epoch"]["created"] == "2025-11-24T16:00:00Z"
+    assert got["agy-trunc-cut-epoch"]["created"] is None
 
 
 def test_agy_schema_error_is_partial_failure(home, world):
