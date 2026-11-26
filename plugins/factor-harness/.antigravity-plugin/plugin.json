@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "factor-harness",
   "displayName": "Factor Harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Architecture-aware review, refactor, and cross-implementation dedup \u2014 surfaces bugs, smells, and precedent gaps, then emits specs for Superpowers to execute.",
   "author": {
     "name": "Steve Morin"
