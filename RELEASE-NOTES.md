@@ -1,5 +1,28 @@
 # Release Notes
 
+## v0.37.0 — 2026-11-25
+
+### Added
+
+- Marketplace & `harness-kit` v0.6.0: generated Antigravity (`agy`) plugin
+  manifests across all plugins and catalog index (#131).
+- `factor-harness` 0.2.0 -> 0.3.0: added Antigravity (`agy`) session-start
+  hooks alongside Claude Code hooks (#131).
+- `project-harness` 0.2.0 -> 0.3.0: added Antigravity (`agy`) session-start
+  hooks alongside Claude Code hooks (#131).
+- `session` 0.19.1 -> 0.20.0: added Antigravity (`agy`) support across session
+  skills (#131) and added 5–10 minute Rex kickoff monitoring and blocker
+  clearing (with `--monitor-only` opt-out and `spinoff-plan watch`) to
+  `session-spinoff` across `claude`, `codex`, `muse`, and `agy` (#133).
+
+### Fixed
+
+- `session`: hardened `session-inventory` `agy` print-flag parsing, truncated
+  numeric `created_at` handling at the 64 KiB boundary, and resume quoting
+  (#132).
+- `repo-hygiene` 0.18.0 -> 0.18.1: hardened `ci-fix` optimize concurrency,
+  path-filter, and release-PR guidance (#130).
+
 ## v0.36.0 — 2026-11-22
 
 ### Added

@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "project-harness",
   "displayName": "Project Harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lightweight PROJECTS.md project management \u2014 capture, scope, decompose, triage, and drift-audit projects as auto-triggering skills that hand execution off to Superpowers.",
   "author": {
     "name": "Steve Morin"

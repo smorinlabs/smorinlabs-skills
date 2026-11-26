@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Public cross-platform (Claude Code + Codex + Antigravity) plugin marketplace for smorinlabs",
-    "version": "0.36.0"
+    "version": "0.37.0"
   },
   "plugins": [
     {
@@ -105,7 +105,7 @@
       "name": "factor-harness",
       "source": "./plugins/factor-harness",
       "description": "Architecture-aware review, refactor, and cross-implementation dedup \u2014 surfaces bugs, smells, and precedent gaps, then emits specs for Superpowers to execute.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Steve Morin"
       },
@@ -175,7 +175,7 @@
       "name": "project-harness",
       "source": "./plugins/project-harness",
       "description": "Lightweight PROJECTS.md project management \u2014 capture, scope, decompose, triage, and drift-audit projects as auto-triggering skills that hand execution off to Superpowers.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": {
         "name": "Steve Morin"
       },
