@@ -482,3 +482,282 @@ def test_shell_fallback_runs_agent_verbatim_then_execs_shell(tmp_path):
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == brief  # agent argv verbatim; exec replaced the wrapper, so nothing after ran
     assert record.read_text().splitlines() == ["-il"]
+
+
+# ── P76: Rex kickoff monitoring and --monitor-only flag ──────────────────
+
+
+def test_parse_args_monitor_only_flag():
+    assert sp.parse_args([])["monitor_only"] is False
+    got = sp.parse_args(["--new", "--claude", "--monitor-only", "fix", "flaky", "tests"])
+    assert got["monitor_only"] is True
+    assert got["placement"] == "new"
+    assert got["agent"] == "claude"
+    assert got["idea"] == "fix flaky tests"
+    # Bare -- stops flag parsing, so --monitor-only after -- stays part of idea text.
+    escaped = sp.parse_args(["--agy", "--", "document", "--monitor-only"])
+    assert escaped["monitor_only"] is False
+    assert escaped["idea"] == "document --monitor-only"
+
+
+@pytest.mark.parametrize(
+    "screen",
+    [
+        # Claude Code workspace trust dialog (also contains "Yes, proceed" and "Esc to cancel")
+        "Quick safety check: Is this a project you created or one you trust?\n"
+        "Do you trust the files in this folder?\n"
+        "❯ 1. Yes, proceed\n"
+        "  2. No, exit\n"
+        "Esc to cancel",
+        # Codex directory trust dialog
+        "Do you trust the contents of this directory?\n"
+        "Working with untrusted contents can be risky.\n"
+        "> 1. Yes, continue\n"
+        "  2. No, quit",
+        # Muse workspace trust prompt
+        "Workspace trust required to load its skills and rules.\n"
+        "Trust this workspace? [y/N]",
+        # Antigravity (agy) folder trust / MCP trust prompt
+        "Trust this folder before running tools?\n"
+        "1. Yes, I trust this folder\n"
+        "2. No",
+        "New MCP server found in .mcp.json\n"
+        "Enable this MCP server for this session?",
+    ],
+)
+def test_classify_screen_detects_trust_blockers_across_agents(screen):
+    got = sp.classify_screen(screen)
+    assert got["blocker_kind"] == "trust"
+    assert got["matched_lines"]
+
+
+@pytest.mark.parametrize(
+    "screen",
+    [
+        # Claude Code tool permission prompt
+        "Bash command: uv run pytest -q\n"
+        "Do you want to proceed?\n"
+        "❯ 1. Yes\n"
+        "  2. Yes, and don't ask again for uv run pytest\n"
+        "  3. No",
+        # Codex exec approval prompt
+        "Would you like to run the following command?\n"
+        "  git status\n"
+        "Press enter to confirm or esc to cancel",
+        # Muse tool approval prompt
+        "Tool approval required for bash:\n"
+        "  1. Approve once\n"
+        "  2. Always allow",
+        # Antigravity (agy) tool permission prompt
+        "Permission required: run_command\n"
+        "Allow this tool? [y/N]",
+    ],
+)
+def test_classify_screen_detects_permission_blockers_across_agents(screen):
+    got = sp.classify_screen(screen)
+    assert got["blocker_kind"] == "permission"
+    assert got["matched_lines"]
+
+
+@pytest.mark.parametrize(
+    "screen",
+    [
+        "Error: Authentication failed. Please sign in to continue.",
+        "Error: Missing API key in environment",
+        "zsh: command not found: codex",
+        "API error: rate limit exceeded",
+    ],
+)
+def test_classify_screen_detects_auth_or_startup_errors(screen):
+    got = sp.classify_screen(screen)
+    assert got["blocker_kind"] == "auth_or_error"
+    assert got["matched_lines"]
+
+
+def test_classify_screen_ignores_normal_output_and_stale_scrollback():
+    normal = "\n".join([
+        "Reading plugins/session/skills/session-spinoff/SKILL.md...",
+        "Running uv run pytest tests/test_session_spinoff.py -q",
+        "42 passed in 0.81s",
+        "Editing README.md to describe kickoff monitoring.",
+    ])
+    assert sp.classify_screen(normal) == {"blocker_kind": None, "matched_lines": []}
+
+    # An earlier trust prompt scrolled above PROMPT_WINDOW_LINES should not re-trigger.
+    stale = "Do you trust the files in this folder?\n" + "\n".join(
+        f"Working line {i}: applying patch and running tests" for i in range(sp.PROMPT_WINDOW_LINES + 5)
+    )
+    assert sp.classify_screen(stale) == {"blocker_kind": None, "matched_lines": []}
+
+
+def test_classify_screen_honors_ignore_kinds():
+    screen = "Do you trust the files in this folder?\nRunning tests now..."
+    assert sp.classify_screen(screen, ignore_kinds={"trust"})["blocker_kind"] is None
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 0.0
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, dt: float) -> None:
+        self.t += max(0.0, dt)
+
+
+def test_watch_pane_returns_immediately_on_trust_blocker():
+    clock = FakeClock()
+    proc = {"foreground": {"argv0": "claude", "cwd": "/code/wt"}}
+    screen = "Do you trust the files in this folder?\n❯ 1. Yes, proceed"
+    got = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        timeout=45, interval=3, idle_threshold=20,
+        get_process=lambda: proc, capture_screen=lambda: screen,
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got["ok"] is False
+    assert got["status"] == "blocker_detected"
+    assert got["blocker_kind"] == "trust"
+    assert got["elapsed_seconds"] == 0.0
+    assert "Do you trust" in got["screen_tail"]
+
+
+def test_watch_pane_detects_later_permission_prompt():
+    clock = FakeClock()
+    proc = {"foreground": {"argv0": "/opt/tools/bin/muse-bin-1.4.20", "cwd": "/code/wt"}}
+    screens = iter([
+        "Reading brief...",
+        "Inspecting files...",
+        "Approval required for shell command\n1. Approve once\n2. Allow for this session",
+    ])
+    last = ""
+
+    def cap():
+        nonlocal last
+        last = next(screens, last)
+        return last
+
+    got = sp.watch_pane(
+        "s1", "b1", "/code/wt", "muse",
+        timeout=45, interval=3, idle_threshold=20,
+        get_process=lambda: proc, capture_screen=cap,
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got["ok"] is False
+    assert got["status"] == "blocker_detected"
+    assert got["blocker_kind"] == "permission"
+    assert got["screen_changes"] == 2
+    assert got["elapsed_seconds"] == 6.0
+
+
+def test_watch_pane_active_through_timeout_when_output_keeps_changing():
+    clock = FakeClock()
+    proc = {"foreground": {"argv0": "/opt/homebrew/bin/codex", "cwd": "/code/wt"}}
+    counter = {"n": 0}
+
+    def cap():
+        counter["n"] += 1
+        return f"Step {counter['n']}: running tests..."
+
+    got = sp.watch_pane(
+        "s1", "b1", "/code/wt", "codex",
+        timeout=12, interval=3, idle_threshold=20,
+        get_process=lambda: proc, capture_screen=cap,
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got["ok"] is True
+    assert got["status"] == "active"
+    assert got["screen_changes"] >= 3
+    assert got["elapsed_seconds"] == 12.0
+
+
+def test_watch_pane_returns_idle_when_screen_stops_changing():
+    clock = FakeClock()
+    proc = {"foreground": {"argv0": "/opt/local/bin/agy", "cwd": "/code/wt"}}
+    got = sp.watch_pane(
+        "s1", "b1", "/code/wt", "agy",
+        timeout=60, interval=3, idle_threshold=10,
+        get_process=lambda: proc, capture_screen=lambda: "Done. Waiting for next prompt.",
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got["ok"] is True
+    assert got["status"] == "idle"
+    assert got["idle_seconds"] == 10.0
+
+
+def test_watch_pane_detects_wrong_dir_exit_and_gone():
+    clock = FakeClock()
+    got_dir = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        timeout=10, interval=3,
+        get_process=lambda: {"foreground": {"argv0": "claude", "cwd": "/code/other"}},
+        capture_screen=lambda: "starting",
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got_dir["ok"] is False and got_dir["status"] == "wrong_dir"
+
+    # Exited back to fallback login shell after agent was seen running.
+    clock2 = FakeClock()
+    procs = iter([
+        {"foreground": {"argv0": "claude", "cwd": "/code/wt"}},
+        {"foreground": {"argv0": "/bin/zsh", "cwd": "/code/wt"}},
+    ])
+    got_exit = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        timeout=20, interval=3,
+        get_process=lambda: next(procs),
+        capture_screen=lambda: "Error: crashed",
+        now=clock2.now, sleep=clock2.sleep,
+    )
+    assert got_exit["ok"] is False and got_exit["status"] == "exited"
+
+    # A transient non-shell child process without last_exit does not falsely report exited.
+    clock3 = FakeClock()
+    procs3 = iter([
+        {"foreground": {"argv0": "claude", "cwd": "/code/wt"}},
+        {"foreground": {"argv0": "pytest", "cwd": "/code/wt"}},
+        {"foreground": {"argv0": "claude", "cwd": "/code/wt"}},
+    ])
+    step = {"i": 0}
+
+    def cap3():
+        step["i"] += 1
+        return f"running {step['i']}"
+
+    got_child = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        timeout=6, interval=3, idle_threshold=20,
+        get_process=lambda: next(procs3),
+        capture_screen=cap3,
+        now=clock3.now, sleep=clock3.sleep,
+    )
+    assert got_child["ok"] is True and got_child["status"] == "active"
+
+    # Pane closed / gone.
+    got_gone = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        get_process=lambda: None, capture_screen=lambda: "",
+        now=FakeClock().now, sleep=FakeClock().sleep,
+    )
+    assert got_gone["ok"] is False and got_gone["status"] == "gone"
+
+
+def test_watch_pane_starting_timeout_and_bad_args():
+    clock = FakeClock()
+    got = sp.watch_pane(
+        "s1", "b1", "/code/wt", "claude",
+        timeout=6, interval=3,
+        get_process=lambda: {"foreground": {"argv0": "zsh", "cwd": "/code/wt"}},
+        capture_screen=lambda: "loading shell...",
+        now=clock.now, sleep=clock.sleep,
+    )
+    assert got["ok"] is False and got["status"] == "starting"
+
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "watch", "--session", "s1", "--block", "b1",
+         "--expect-dir", "/code/wt", "--agent", "claude", "--timeout", "-1"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 2
+    assert "--timeout" in proc.stderr

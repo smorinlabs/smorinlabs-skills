@@ -21,6 +21,13 @@ Verbs (all print JSON to stdout; refusals print to stderr and exit 2):
   verify-launch --session S --block B --expect-dir DIR --agent NAME
       Check that the new tab runs NAME with its working directory at DIR.
       Exit 0 when both hold, 3 when either does not (JSON says which).
+  watch --session S --block B --expect-dir DIR --agent NAME [--timeout SEC]
+        [--interval SEC] [--idle-threshold SEC] [--ignore-kind KIND]
+      Poll the launched Rex pane's process state and terminal screen for up to
+      --timeout seconds. Returns immediately on trust/permission/auth blockers,
+      wrong directory, exit to shell, or closed pane (exit 3), or when the
+      screen stays idle for --idle-threshold seconds / timeout elapses cleanly
+      (exit 0). Read-only: runs `rex block call ... process` and `rex capture`.
   commands [--brief-file PATH]   (plan JSON on stdin)
       Build the worktree, launch, and jump commands. Pure: runs nothing.
       The brief is read from --brief-file when given, so free text never has
@@ -33,19 +40,25 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 AGENTS = ("claude", "codex", "muse", "agy")
 HIT_THRESHOLD = 3            # transcript path hits that count as "working in this repo"
 TRANSCRIPT_TAIL = 300_000    # bytes read from the end of each live agent's transcript
+SCREEN_TAIL_LINES = 50       # lines returned to the caller for prompt inspection
+PROMPT_WINDOW_LINES = 25     # bottom non-empty lines scanned for active blockers
+YN_TAIL_LINES = 6            # trailing non-empty lines scanned for [y/N] prompts
+BLOCKER_KINDS = ("trust", "permission", "auth_or_error")
 VALUE_FLAGS = ("--session", "--name", "--repo")
-BOOL_FLAGS = ("--new", "--dry-run") + tuple(f"--{a}" for a in AGENTS)
+BOOL_FLAGS = ("--new", "--dry-run", "--monitor-only") + tuple(f"--{a}" for a in AGENTS)
 
 
 class SpinoffArgError(ValueError):
@@ -57,7 +70,7 @@ class SpinoffArgError(ValueError):
 
 def parse_args(argv: list[str]) -> dict:
     out = {"idea": "", "placement": "ask", "session": None, "name": None,
-           "repo": None, "agent": None, "dry_run": False}
+           "repo": None, "agent": None, "dry_run": False, "monitor_only": False}
     words: list[str] = []
     new = False
     agents: list[str] = []
@@ -77,6 +90,8 @@ def parse_args(argv: list[str]) -> dict:
             new = True
         elif tok == "--dry-run":
             out["dry_run"] = True
+        elif tok == "--monitor-only":
+            out["monitor_only"] = True
         elif tok in tuple(f"--{a}" for a in AGENTS):
             agents.append(tok[2:])
         elif tok.startswith("--") and words:
@@ -198,6 +213,82 @@ def check_launch(process: dict, expect_dir: str, agent: str) -> dict:
             "cwd_ok": cwd_ok, "agent_ok": agent_ok}
 
 
+# ── kickoff screen classifier & pane watcher ─────────────────────────────
+
+TRUST_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\bdo you trust\b",
+    r"\btrust (?:the files in |the contents of )?this (?:folder|directory|workspace|project|repo|repository)\b",
+    r"\byes,?\s+i trust this (?:folder|directory|workspace|project)\b",
+    r"\bworkspace trust\b",
+    r"\b(?:trust|enable)\s+(?:this|these|the)\s+(?:mcp server|hooks?|plugin)\b",
+    r"\bquick safety check:.*trust\b",
+    r"\bworking with untrusted\b",
+))
+
+PERMISSION_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\bdo you want to (?:proceed|run|allow|make this edit|create|delete|execute|use)\b",
+    r"\bwould you like to (?:run|make|apply|allow|execute)\b",
+    r"\b(?:allow|approve)\s+(?:once|always|for this session|this (?:command|tool|action|edit|request))\b",
+    r"\byes,?\s+(?:and )?(?:don'?t ask again|allow|proceed|continue)\b",
+    r"\b(?:permission|approval)\s+(?:required|requested|needed)\b",
+    r"\bwaiting for (?:permission|approval)\b",
+    r"\bpress enter to confirm\b",
+    r"\besc to cancel\b",
+))
+
+YN_PROMPT_PATTERN = re.compile(r"(?:\[y/n\]|\(y/n\))", re.IGNORECASE)
+
+AUTH_OR_ERROR_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\b(?:authentication|auth)\s+(?:failed|error|required|expired)\b",
+    r"\b(?:please |run .*)?(?:log ?in|sign ?in)\s+(?:to continue|first|required)\b",
+    r"\b(?:invalid|missing)\s+api[_ ]?key\b",
+    r"\b(?:rate limit|quota exceeded|insufficient quota)\b",
+    r"\bcommand not found\b",
+))
+
+
+def is_shell(process: dict) -> bool:
+    """True when the pane's foreground process is a Bourne-family shell."""
+    argv0 = (process.get("foreground") or {}).get("argv0") or ""
+    return os.path.basename(argv0.lstrip("-")) in POSIX_SHELLS
+
+
+def tail_lines(text: str, limit: int = SCREEN_TAIL_LINES) -> str:
+    """Return the last `limit` lines of terminal capture with trailing blank lines removed."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines[-limit:]) if limit > 0 else ""
+
+
+def classify_screen(text: str, *, ignore_kinds: set[str] | frozenset[str] = frozenset()) -> dict:
+    """Classify the bottom visible lines of a pane capture for kickoff blockers.
+
+    Checks only the last PROMPT_WINDOW_LINES non-empty lines so earlier cleared
+    prompts in scrollback do not re-trigger. Priority: trust > permission >
+    auth_or_error.
+    """
+    non_empty = [line for line in tail_lines(text, SCREEN_TAIL_LINES).split("\n") if line.strip()]
+    window = non_empty[-PROMPT_WINDOW_LINES:]
+    if not window:
+        return {"blocker_kind": None, "matched_lines": []}
+
+    checks = (
+        ("trust", TRUST_PATTERNS, window),
+        ("permission", PERMISSION_PATTERNS, window),
+        ("auth_or_error", AUTH_OR_ERROR_PATTERNS, window),
+    )
+    for kind, patterns, lines in checks:
+        if kind in ignore_kinds:
+            continue
+        matched = [line for line in lines if any(rx.search(line) for rx in patterns)]
+        if kind == "permission" and not matched:
+            matched = [line for line in lines[-YN_TAIL_LINES:] if YN_PROMPT_PATTERN.search(line)]
+        if matched:
+            return {"blocker_kind": kind, "matched_lines": matched}
+    return {"blocker_kind": None, "matched_lines": []}
+
+
 def jump_command(client: str | None, session_id: str, window_id: str | None) -> list[str]:
     cmd = ["rex"]
     if client:
@@ -285,6 +376,137 @@ def _run_json(argv: list[str]) -> dict | None:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:
         return None
+
+
+def _run_text(argv: list[str]) -> str | None:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def watch_pane(
+    session_id: str,
+    block_id: str,
+    expect_dir: str,
+    agent: str,
+    *,
+    timeout: float = 45.0,
+    interval: float = 3.0,
+    idle_threshold: float = 20.0,
+    ignore_kinds: set[str] | frozenset[str] = frozenset(),
+    get_process=None,
+    capture_screen=None,
+    now=time.monotonic,
+    sleep=time.sleep,
+) -> dict:
+    """Poll a Rex pane's process and terminal screen during kickoff.
+
+    Returns immediately when a blocker, wrong directory, agent exit, or closed
+    pane is observed, or once idle_threshold / timeout elapses. Never sends
+    input to the pane.
+    """
+    if timeout < 0:
+        raise SpinoffArgError("--timeout must be >= 0")
+    if interval <= 0:
+        raise SpinoffArgError("--interval must be > 0")
+    if idle_threshold < 0:
+        raise SpinoffArgError("--idle-threshold must be >= 0")
+
+    if get_process is None:
+        get_process = lambda: _run_json(
+            ["rex", "block", "call", "-s", session_id, "-b", block_id, "process"]
+        )
+    if capture_screen is None:
+        capture_screen = lambda: _run_text(
+            ["rex", "capture", "-s", session_id, "-b", block_id, "--trim", "--unwrap"]
+        )
+
+    started_at = now()
+    last_change_at = started_at
+    last_hash: str | None = None
+    screen_changes = 0
+    saw_agent = False
+
+    def _result(
+        status: str,
+        ok: bool,
+        *,
+        launch: dict | None = None,
+        blocker_kind: str | None = None,
+        matched_lines: list[str] | None = None,
+        screen_tail: str = "",
+        screen_hash: str | None = None,
+        last_exit=None,
+    ) -> dict:
+        cur = now()
+        launch = launch or {"cwd": None, "agent": None, "cwd_ok": False, "agent_ok": False}
+        return {
+            "ok": ok,
+            "status": status,
+            "blocker_kind": blocker_kind,
+            "matched_lines": matched_lines or [],
+            "agent": launch["agent"],
+            "cwd": launch["cwd"],
+            "agent_ok": launch["agent_ok"],
+            "cwd_ok": launch["cwd_ok"],
+            "last_exit": last_exit,
+            "elapsed_seconds": round(max(0.0, cur - started_at), 2),
+            "idle_seconds": round(max(0.0, cur - last_change_at), 2),
+            "screen_changes": screen_changes,
+            "screen_hash": screen_hash,
+            "screen_tail": screen_tail,
+        }
+
+    while True:
+        proc = get_process()
+        if proc is None:
+            return _result("gone", False)
+
+        launch = check_launch(proc, expect_dir, agent)
+        raw = capture_screen() or ""
+        tail = tail_lines(raw, SCREEN_TAIL_LINES)
+        screen_hash = hashlib.sha256(tail.encode("utf-8", "replace")).hexdigest()[:16]
+        tick_now = now()
+        if last_hash is None:
+            last_hash = screen_hash
+        elif screen_hash != last_hash:
+            last_hash = screen_hash
+            screen_changes += 1
+            last_change_at = tick_now
+
+        if launch["agent_ok"]:
+            saw_agent = True
+            if not launch["cwd_ok"]:
+                return _result("wrong_dir", False, launch=launch,
+                               screen_tail=tail, screen_hash=screen_hash)
+        else:
+            last_exit = proc.get("last_exit")
+            if last_exit is not None or (saw_agent and is_shell(proc)):
+                return _result("exited", False, launch=launch, last_exit=last_exit,
+                               screen_tail=tail, screen_hash=screen_hash)
+
+        cls = classify_screen(tail, ignore_kinds=ignore_kinds)
+        if cls["blocker_kind"] is not None:
+            return _result("blocker_detected", False, launch=launch,
+                           blocker_kind=cls["blocker_kind"],
+                           matched_lines=cls["matched_lines"],
+                           screen_tail=tail, screen_hash=screen_hash)
+
+        elapsed = tick_now - started_at
+        idle_for = tick_now - last_change_at
+        if saw_agent and idle_threshold > 0 and idle_for >= idle_threshold:
+            return _result("idle", True, launch=launch,
+                           screen_tail=tail, screen_hash=screen_hash)
+        if elapsed >= timeout:
+            return _result("active" if saw_agent else "starting", saw_agent, launch=launch,
+                           screen_tail=tail, screen_hash=screen_hash)
+
+        remaining = timeout - elapsed
+        if saw_agent and idle_threshold > 0:
+            remaining = min(remaining, max(0.0, idle_threshold - idle_for))
+        sleep(min(interval, max(0.0, remaining)))
 
 
 def git_common_dir(path: str) -> str | None:
@@ -416,6 +638,15 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--block", required=True)
     v.add_argument("--expect-dir", required=True)
     v.add_argument("--agent", required=True, choices=AGENTS)
+    w = sub.add_parser("watch")
+    w.add_argument("--session", required=True)
+    w.add_argument("--block", required=True)
+    w.add_argument("--expect-dir", required=True)
+    w.add_argument("--agent", required=True, choices=AGENTS)
+    w.add_argument("--timeout", type=float, default=45.0)
+    w.add_argument("--interval", type=float, default=3.0)
+    w.add_argument("--idle-threshold", type=float, default=20.0)
+    w.add_argument("--ignore-kind", action="append", choices=BLOCKER_KINDS, default=[])
     c = sub.add_parser("commands")
     c.add_argument("--brief-file", help="read the brief from this file instead of the plan's 'brief'")
     ns = p.parse_args(argv)
@@ -428,6 +659,16 @@ def main(argv: list[str] | None = None) -> int:
             if proc is None:
                 raise SpinoffArgError(f"could not read block {ns.block} in {ns.session}")
             result = check_launch(proc, ns.expect_dir, ns.agent)
+            json.dump(result, sys.stdout, indent=2)
+            print()
+            return 0 if result["ok"] else 3
+        elif ns.verb == "watch":
+            result = watch_pane(
+                ns.session, ns.block, ns.expect_dir, ns.agent,
+                timeout=ns.timeout, interval=ns.interval,
+                idle_threshold=ns.idle_threshold,
+                ignore_kinds=frozenset(ns.ignore_kind),
+            )
             json.dump(result, sys.stdout, indent=2)
             print()
             return 0 if result["ok"] else 3

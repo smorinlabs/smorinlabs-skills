@@ -2762,3 +2762,20 @@ Runtime support is macOS/Linux with Python 3.11+. Agent Deck entries remain
 registry observations unless exact native identity supplies corroboration.
 Remote PR evidence is an explicit agent assessment input, not an automatic
 network scan. Private inventories and captures are not included in this repo.
+
+
+## [x] Project P76: session-spinoff Rex kickoff monitoring and blocker clearing (session 0.19.1 → 0.20.0)
+
+**Goal**: Have the parent session monitor spun-off Claude Code, Codex, Muse, and
+Antigravity (`agy`) panes through Rex for 5–10 minutes after launch so fresh
+worktrees do not stall on early workspace trust or permission prompts, clearing
+kickoff blockers by default and surfacing them instead when `--monitor-only` is
+passed.
+
+### Tests & Tasks
+
+- [x] [P76-T01] Add `--monitor-only` flag and deterministic read-only `watch` verb (`classify_screen` + `watch_pane`) to `scripts/spinoff-plan`.
+- [x] [P76-T02] Update `session-spinoff` `SKILL.md` with the 5–10 minute Rex kickoff monitoring loop, prompt-inspection approval boundary, and Red Flags.
+- [x] [P76-T03] Refresh `docs/skills/session-spinoff.md`, `README.md`, and `plugins/session/plugin.meta.toml` (`0.19.1` → `0.20.0`), and regenerate manifests (`just gen`).
+- [x] [P76-TS01] Unit tests in `tests/test_session_spinoff.py` covering `--monitor-only`, trust/permission/auth screen classification across all four agents, stale-scrollback ignoring, and deterministic `watch_pane` state transitions.
+- [x] [P76-TS02] Repository checks: 1,755 tests passed, 4 platform skips; generator and naming checks passed. Claude Code and Codex deep-load checks and headless dry-run E2E smoke tests passed.
