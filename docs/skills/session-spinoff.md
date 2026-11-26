@@ -19,17 +19,24 @@ directories their tabs work in, and "New session" is always an option. The
 same question confirms the launch directory: the worktree root by default, a
 package directory for monorepo work, or a parent directory for ideas that span
 repos. After launch the skill verifies that the agent is running in that
-directory. The agent runs inside your login shell, so quitting it leaves the
+directory, prints the receipt, and monitors the new Rex pane for 5–10 minutes
+(at the agent's judgment) across all four agents (`claude`, `codex`, `muse`,
+and `agy`) to make sure kickoff takes hold. By default it inspects the terminal
+output and clears workspace trust prompts and early permission prompts that
+would otherwise stall startup, re-verifying after each approval while still
+surfacing hard failures (crashes, auth errors) or substantive task questions.
+Pass `--monitor-only` to watch and surface blockers without sending input to
+the pane. The agent runs inside your login shell, so quitting it leaves the
 tab open at a normal shell prompt instead of closing the tab. A
 new session gets a proposed `<type>-<topic>` name you confirm or edit. The
-agent you are running now is the default. The skill finishes with a receipt
-(Rex session and tab, agent, worktree, branch) and the
-`rex -C <client> do session.select …` command that jumps the Rex app to the new
-tab, which it offers to run. The jump needs Rex's Remote Control setting; the
-skill never changes it.
+agent you are running now is the default. The skill finishes with a kickoff
+summary and offers to run the `rex -C <client> do session.select …` command
+that jumps the Rex app to the new tab. The jump needs Rex's Remote Control
+setting; the skill never changes it.
 
-Deterministic steps — the argument gate, the snapshot, and building the
-commands — run through the bundled stdlib `scripts/spinoff-plan` helper.
+Deterministic steps — the argument gate, the snapshot, building the commands,
+and bounded Rex pane watching (`watch`) — run through the bundled stdlib
+`scripts/spinoff-plan` helper.
 
 **Triggers on:** "spin this off", "launch this in Rex", "start a new session
 for this in <repo>", "open a new agent for that bug", or any ask to work a side
@@ -38,7 +45,8 @@ idea in its own session. NOT continuing the current work elsewhere
 moving a running conversation to another Rex session (`session-move`).
 
 **Arguments:** `[idea] [--new | --session <label|id>] [--name <session-name>]
-[--repo <name|path>] [--claude | --codex | --muse | --agy] [--dry-run]`
+[--repo <name|path>] [--claude | --codex | --muse | --agy] [--monitor-only]
+[--dry-run]`
 
 | Argument | Skips |
 |---|---|
@@ -48,6 +56,7 @@ moving a running conversation to another Rex session (`session-move`).
 | `--name <session-name>` | The name confirmation; implies `--new` |
 | `--repo <name\|path>` | Inferring the target repo |
 | `--claude` / `--codex` / `--muse` / `--agy` | The agent question |
+| `--monitor-only` | Auto-clearing kickoff trust and permission prompts; monitors and surfaces blockers instead |
 | `--dry-run` | All writes; prints the brief and the commands |
 
 Refused before anything runs: `--new` with `--session`, `--name` with
