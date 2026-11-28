@@ -580,10 +580,15 @@ def git_bytes(root: Path, *args: str) -> bytes:
     return result.stdout
 
 
+def staged_paths(root: Path, base: str) -> list[str]:
+    return sorted({p for p in git(root, "diff", "--cached", "--no-renames", "--name-only", "-z", base, "--").split("\0") if p})
+
+
 def status_paths(root: Path, base: str) -> list[str]:
     tracked = git(root, "diff", "--no-renames", "--name-only", "-z", base, "--").split("\0")
+    staged = staged_paths(root, base)
     untracked = git(root, "ls-files", "--others", "-z").split("\0")
-    return sorted({p for p in tracked + untracked if p})
+    return sorted({p for p in tracked + staged + untracked if p})
 
 
 def restored_path(path: str) -> bool:
@@ -608,6 +613,8 @@ def restore_revision(root: Path, state: dict) -> str:
 def review_workspace(root: Path, state: dict) -> None:
     if git(root, "rev-parse", "HEAD") != state["head"]:
         raise Refusal("Review workspace HEAD changed unexpectedly")
+    if staged_paths(root, state["head"]):
+        raise Refusal("Review workspace has unexpected staged changes")
     restored_base = state.get("restore_base", state["base"])
     for name in status_paths(root, state["head"]):
         path = root / name
@@ -908,11 +915,17 @@ def consolidate(api, state: dict, completed: dict | None = None) -> None:
 def publish_fix(root: Path, state: dict, api) -> None:
     if git(root, "rev-parse", "HEAD") != state["base"] or git(root, "branch", "--show-current") != state["branch"]:
         raise Refusal("Fix workspace changed its starting commit or branch")
+    if staged_paths(root, state["base"]):
+        raise Refusal("Fix workspace has unexpected staged changes")
     changes = status_paths(root, state["base"])
     for name in changes:
+        parts = PurePosixPath(name).parts
         path = root / name
-        if protected(name) or sensitive(name) or path.is_symlink():
+        if (protected(name) or sensitive(name)
+                or any(root.joinpath(*parts[:i]).is_symlink() for i in range(1, len(parts) + 1))):
             raise Refusal("Fix changed protected, credential-like, or symlink paths")
+        if path.exists() and not path.is_file():
+            raise Refusal("Fix changed a non-regular file")
     if not changes:
         print("No fix changes; no PR created")
         return

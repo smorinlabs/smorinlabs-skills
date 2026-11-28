@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "muse-github",
   "displayName": "Muse GitHub",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Install member-authorized PR reviews, inline findings, comment follow-ups, and optional fix PRs with the official Claude Code Action and Meta Muse",
   "author": {
     "name": "Steve Morin"

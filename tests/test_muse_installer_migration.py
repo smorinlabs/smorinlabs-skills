@@ -207,7 +207,7 @@ def previous_managed(root, model, fixes, baseline=0):
 
 @pytest.mark.parametrize("model", sorted(installer.MODELS))
 @pytest.mark.parametrize("fixes", [False, True])
-@pytest.mark.parametrize("baseline", [0, 1, 2], ids=["0.5.0", "0.5.1", "0.5.2"])
+@pytest.mark.parametrize("baseline", [0, 1, 2, 3], ids=["0.5.0", "0.5.1", "0.5.2", "0.5.3/0.6.0"])
 def test_known_claude_install_updates_preserving_model_fixes_and_unrelated_files(tmp_path, templates, model, fixes, baseline):
     previous_managed(tmp_path, model, fixes, baseline)
     unrelated = tmp_path / "opencode.json"
@@ -276,4 +276,14 @@ def test_append_preserves_unmarked_instruction_bytes(tmp_path, templates):
     target.write_bytes(original)
     installer.apply(tmp_path, installer.plan(tmp_path, "example-org"))
     assert target.read_bytes().startswith(original)
+    assert installer.plan(tmp_path, "example-org") == {}
+
+
+@pytest.mark.parametrize("fixes", [False, True])
+def test_real_0_5_3_install_updates_only_helper_to_current_templates(tmp_path, fixes):
+    previous_managed(tmp_path, "muse-spark-1.3", fixes, baseline=3)
+    changes = installer.plan(tmp_path, "example-org")
+    assert set(changes) == {".github/scripts/muse_ci.py"}
+    assert "staged_paths" in changes[".github/scripts/muse_ci.py"]
+    installer.apply(tmp_path, changes)
     assert installer.plan(tmp_path, "example-org") == {}
