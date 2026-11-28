@@ -230,9 +230,10 @@ publication against the latest commit or automatic retraction of stale findings.
 
 ## Fix and dependency limits
 
-The manual model edits ordinary files only. A trusted helper validates all changed
-paths before committing, pushing a fresh branch, and creating a PR for human
-review. Invalid or failed runs do not publish; an empty diff creates no PR.
+The manual model edits ordinary files only. A trusted helper rejects unexpected
+staged index changes and validates all changed paths before staging, committing,
+pushing a fresh branch, and creating a PR for human review. Invalid or failed
+runs do not publish; an empty diff creates no PR.
 Protected CI/agent files, credentials, symlinks, approval, and merging remain
 outside the model's capability contract. Ordinary PR CI runs tests afterward.
 

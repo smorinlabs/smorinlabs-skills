@@ -446,3 +446,131 @@ def test_status_paths_preserves_leading_whitespace(gitroot):
     base = git(gitroot, "rev-parse", "HEAD")
     (gitroot / " leading.txt").write_text("data\n")
     assert ci.status_paths(gitroot, base) == [" leading.txt"]
+
+
+def test_status_paths_includes_staged_only_changes(gitroot):
+    base = git(gitroot, "rev-parse", "HEAD")
+    (gitroot / "CLAUDE.md").write_text("tampered\n")
+    git(gitroot, "add", "CLAUDE.md")
+    (gitroot / "CLAUDE.md").write_text("base instruction\n")
+    (gitroot / ".env.local").write_text("secret\n")
+    git(gitroot, "add", ".env.local")
+    (gitroot / ".env.local").unlink()
+    assert ci.status_paths(gitroot, base) == [".env.local", "CLAUDE.md"]
+
+
+def test_review_workspace_refuses_staged_changes(gitroot):
+    base = git(gitroot, "rev-parse", "HEAD")
+    (gitroot / "CLAUDE.md").write_text("head instruction\n")
+    git(gitroot, "commit", "-qam", "head")
+    head = git(gitroot, "rev-parse", "HEAD")
+    # Stage a tampered restored path while keeping the working tree equal to valid restoration.
+    (gitroot / "CLAUDE.md").write_text("tampered in index\n")
+    git(gitroot, "add", "CLAUDE.md")
+    (gitroot / "CLAUDE.md").write_text("base instruction\n")
+    snapshot = gitroot / ".claude-pr/CLAUDE.md"
+    snapshot.parent.mkdir()
+    snapshot.write_text("head instruction\n")
+    with pytest.raises(ci.Refusal, match="staged"):
+        ci.review_workspace(gitroot, {"head": head, "base": base})
+    git(gitroot, "reset", "-q", "HEAD", "--", "CLAUDE.md")
+    ci.review_workspace(gitroot, {"head": head, "base": base})
+    # Stage a tampered non-restored file and restore its working-tree copy to head.
+    (gitroot / "file.txt").write_text("tampered in index\n")
+    git(gitroot, "add", "file.txt")
+    (gitroot / "file.txt").write_text("base\n")
+    with pytest.raises(ci.Refusal, match="staged"):
+        ci.review_workspace(gitroot, {"head": head, "base": base})
+
+
+def test_fix_refuses_staged_protected_bypass_with_restored_worktree(tmp_path):
+    root = tmp_path / "repo"
+    remote = tmp_path / "remote.git"
+    root.mkdir()
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "Test")
+    wf = root / ".github/workflows/ci.yml"
+    wf.parent.mkdir(parents=True)
+    wf.write_text("name: CI\n")
+    (root / "file.txt").write_text("base\n")
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "base")
+    git(root, "remote", "add", "origin", str(remote))
+    base = git(root, "rev-parse", "HEAD")
+    git(root, "checkout", "-qb", "muse/fix-10-1")
+    # Stage a protected edit, restore the working tree to base, and edit a benign file.
+    wf.write_text("name: Tampered\n")
+    git(root, "add", ".github/workflows/ci.yml")
+    wf.write_text("name: CI\n")
+    (root / "file.txt").write_text("benign edit\n")
+    state = {"base": base, "branch": "muse/fix-10-1", "repository": "org/repo", "default_branch": "main",
+             "request": "fix bug", "run_url": "https://github.com/org/repo/actions/runs/10"}
+    api = API()
+    with pytest.raises(ci.Refusal, match="staged"):
+        ci.publish_fix(root, state, api)
+    assert git(root, "rev-parse", "HEAD") == base
+    assert api.calls == []
+    assert subprocess.check_output(["git", "--git-dir", str(remote), "branch", "--list"], text=True).strip() == ""
+
+
+@pytest.mark.parametrize("case", [
+    "staged_sensitive_deleted_worktree",
+    "staged_symlink_restored_worktree",
+    "staged_protected_deletion_restored_worktree",
+    "staged_benign_only",
+    "staged_protected_no_worktree_diff",
+])
+def test_fix_refuses_unexpected_staged_index_entries(gitroot, case):
+    base = git(gitroot, "rev-parse", "HEAD")
+    git(gitroot, "checkout", "-qb", "muse/fix-10-1")
+    if case == "staged_sensitive_deleted_worktree":
+        (gitroot / ".env.local").write_text("secret\n")
+        git(gitroot, "add", ".env.local")
+        (gitroot / ".env.local").unlink()
+        (gitroot / "file.txt").write_text("benign\n")
+    elif case == "staged_symlink_restored_worktree":
+        (gitroot / "file.txt").unlink()
+        (gitroot / "file.txt").symlink_to("CLAUDE.md")
+        git(gitroot, "add", "file.txt")
+        (gitroot / "file.txt").unlink()
+        (gitroot / "file.txt").write_text("base\n")
+        (gitroot / "other.txt").write_text("benign\n")
+    elif case == "staged_protected_deletion_restored_worktree":
+        git(gitroot, "rm", "--cached", "-q", "CLAUDE.md")
+        (gitroot / "file.txt").write_text("benign\n")
+    elif case == "staged_benign_only":
+        (gitroot / "file.txt").write_text("benign\n")
+        git(gitroot, "add", "file.txt")
+    else:
+        (gitroot / "CLAUDE.md").write_text("tampered\n")
+        git(gitroot, "add", "CLAUDE.md")
+        (gitroot / "CLAUDE.md").write_text("base instruction\n")
+    state = {"base": base, "branch": "muse/fix-10-1", "repository": "org/repo", "default_branch": "main",
+             "request": "fix bug", "run_url": "https://github.com/org/repo/actions/runs/10"}
+    api = API()
+    with pytest.raises(ci.Refusal, match="staged"):
+        ci.publish_fix(gitroot, state, api)
+    assert git(gitroot, "rev-parse", "HEAD") == base
+    assert api.calls == []
+
+
+def test_fix_refuses_non_regular_file_and_symlink_traversal(gitroot):
+    base = git(gitroot, "rev-parse", "HEAD")
+    git(gitroot, "checkout", "-qb", "muse/fix-10-1")
+    nested = gitroot / "nested"
+    nested.mkdir()
+    git(nested, "init", "-q")
+    git(nested, "config", "user.email", "test@example.com")
+    git(nested, "config", "user.name", "Test")
+    (nested / "x.txt").write_text("hi\n")
+    git(nested, "add", ".")
+    git(nested, "commit", "-qm", "sub")
+    state = {"base": base, "branch": "muse/fix-10-1", "repository": "org/repo", "default_branch": "main",
+             "request": "fix bug", "run_url": "https://github.com/org/repo/actions/runs/10"}
+    api = API()
+    with pytest.raises(ci.Refusal, match="non-regular"):
+        ci.publish_fix(gitroot, state, api)
+    assert git(gitroot, "rev-parse", "HEAD") == base
+    assert api.calls == []
